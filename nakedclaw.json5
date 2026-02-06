@@ -1,0 +1,48 @@
+{
+  // AI model
+  model: {
+    provider: "anthropic",
+    name: "claude-sonnet-4-5-20250929",
+    // ANTHROPIC_API_KEY from environment
+  },
+
+  // Agent workspace (itself)
+  workspace: ".",
+
+  // Channels — enable what you have tokens for
+  channels: {
+    telegram: {
+      enabled: false,
+      allowFrom: [],
+      // TELEGRAM_BOT_TOKEN from environment
+    },
+    whatsapp: {
+      enabled: false,
+      allowFrom: [],
+    },
+    slack: {
+      enabled: false,
+      allowFrom: [],
+      // SLACK_BOT_TOKEN + SLACK_APP_TOKEN from environment
+    },
+  },
+
+  // Sessions
+  sessions: {
+    dir: "./sessions",
+    maxTurns: 50,
+  },
+
+  // Memory
+  memory: {
+    dir: "./memory",
+    indexFile: "./memory/memory.md",
+  },
+
+  // Heartbeat
+  heartbeat: {
+    enabled: false,
+    cronExpr: "0 * * * *", // every hour
+    prompt: "Check for pending tasks, review memory, and report status.",
+  },
+}

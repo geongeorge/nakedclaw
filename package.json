@@ -1,0 +1,31 @@
+{
+  "name": "nakedclaw",
+  "version": "0.2.0",
+  "module": "src/cli.ts",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "nakedclaw": "src/cli.ts"
+  },
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "cli": "bun run src/cli.ts",
+    "tui": "bun run src/tui/viewer.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.2.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@mariozechner/pi-ai": "^0.52.6",
+    "@slack/bolt": "^4.6.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "croner": "^10.0.1",
+    "grammy": "^1.39.3",
+    "json5": "^2.2.3"
+  }
+}
