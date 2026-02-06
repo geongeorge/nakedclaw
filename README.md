@@ -8,6 +8,15 @@
 
 NakedClaw is a self-improving AI agent that runs as a background daemon on your machine. Chat with it from your terminal, WhatsApp, Telegram, or Slack — and it can edit its own source code to add features, fix bugs, and grow.
 
+## Features
+
+- **Memory** — all chats saved as markdown in `memory/`, searchable, with `memory.md` loaded every session
+- **Heartbeat** — configurable cron that triggers the agent periodically
+- **Scheduler** — natural language scheduling ("remind me at 10", "every day at 9am")
+- **Multiple terminals** — open as many `nakedclaw` sessions as you want
+- **Config hot-reload** — edit `nakedclaw.json5` and heartbeat/scheduler update automatically
+- **Skills** — NakedClaw reaches its long, naked claw into the [openclaw](https://github.com/openclaw/openclaw) skill catalog and shamelessly steals every single skill. 100% compatible with all openclaw skills — turns out you don't need clothes to be talented
+
 ## Quick start
 
 ```bash
@@ -51,15 +60,6 @@ Enable channels in `nakedclaw.json5`:
 - **WhatsApp** — scan QR code on first launch (check `nakedclaw logs`)
 - **Telegram** — set `TELEGRAM_BOT_TOKEN` env var
 - **Slack** — set `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` env vars
-
-## Features
-
-- **Memory** — all chats saved as markdown in `memory/`, searchable, with `memory.md` loaded every session
-- **Heartbeat** — configurable cron that triggers the agent periodically
-- **Scheduler** — natural language scheduling ("remind me at 10", "every day at 9am")
-- **Multiple terminals** — open as many `nakedclaw` sessions as you want
-- **Config hot-reload** — edit `nakedclaw.json5` and heartbeat/scheduler update automatically
-- **Skills** — NakedClaw reaches its long, naked claw into the [openclaw](https://github.com/openclaw/openclaw) skill catalog and shamelessly steals every single skill. 100% compatible with all openclaw skills — turns out you don't need clothes to be talented
 
 ## Architecture
 
