@@ -42,3 +42,6 @@ memory/
 
 # cached skill files
 skills/
+
+# downloaded media from channels
+media/

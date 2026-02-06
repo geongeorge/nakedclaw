@@ -1,6 +1,10 @@
 import { Bot } from "grammy";
-import type { ChannelAdapter, IncomingMessage, ReplyFn } from "./types.ts";
+import { mkdirSync, existsSync, writeFileSync } from "node:fs";
+import { resolve, join } from "node:path";
+import type { Attachment, ChannelAdapter, IncomingMessage, ReplyFn } from "./types.ts";
 import type { ChannelConfig } from "../config.ts";
+
+const MEDIA_DIR = resolve(import.meta.dir, "../../media/telegram");
 
 export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -9,7 +13,39 @@ export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
   const bot = new Bot(token);
   let handler: ((msg: IncomingMessage, reply: ReplyFn) => void) | null = null;
 
-  bot.on("message:text", async (ctx) => {
+  /**
+   * Download a Telegram file by file_id and save to disk.
+   */
+  async function downloadFile(
+    fileId: string,
+    fileName: string
+  ): Promise<string | null> {
+    if (!existsSync(MEDIA_DIR)) mkdirSync(MEDIA_DIR, { recursive: true });
+
+    try {
+      const file = await bot.api.getFile(fileId);
+      if (!file.file_path) return null;
+
+      const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const filePath = join(MEDIA_DIR, fileName);
+      writeFileSync(filePath, buffer);
+      console.log(`[telegram] Saved media: ${filePath}`);
+      return filePath;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[telegram] Media download failed: ${errMsg}`);
+      return null;
+    }
+  }
+
+  /**
+   * Handle any message type — text, voice, photo, video, document, audio, sticker.
+   */
+  bot.on("message", async (ctx) => {
     if (!handler) return;
 
     const sender = ctx.from?.username
@@ -24,20 +60,146 @@ export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
       return;
     }
 
+    // Send typing indicator immediately
+    try {
+      await ctx.replyWithChatAction("typing");
+    } catch {
+      // best-effort
+    }
+
+    const attachments: Attachment[] = [];
+    let text = ctx.message?.text || ctx.message?.caption || "";
+
+    // Voice message
+    if (ctx.message?.voice) {
+      const v = ctx.message.voice;
+      const name = `${Date.now()}.ogg`;
+      const filePath = await downloadFile(v.file_id, name);
+      if (filePath) {
+        attachments.push({
+          type: "voice",
+          filePath,
+          mimeType: v.mime_type || "audio/ogg",
+          duration: v.duration,
+        });
+      }
+    }
+
+    // Audio message
+    if (ctx.message?.audio) {
+      const a = ctx.message.audio;
+      const ext = a.mime_type?.split("/").pop() || "mp3";
+      const name = a.file_name || `${Date.now()}.${ext}`;
+      const filePath = await downloadFile(a.file_id, name);
+      if (filePath) {
+        attachments.push({
+          type: "audio",
+          filePath,
+          mimeType: a.mime_type || undefined,
+          fileName: a.file_name || undefined,
+          duration: a.duration,
+        });
+      }
+    }
+
+    // Photo — pick the largest resolution
+    if (ctx.message?.photo && ctx.message.photo.length > 0) {
+      const photo = ctx.message.photo[ctx.message.photo.length - 1]!;
+      const name = `${Date.now()}.jpg`;
+      const filePath = await downloadFile(photo.file_id, name);
+      if (filePath) {
+        attachments.push({
+          type: "image",
+          filePath,
+          mimeType: "image/jpeg",
+        });
+      }
+    }
+
+    // Video
+    if (ctx.message?.video) {
+      const v = ctx.message.video;
+      const ext = v.mime_type?.split("/").pop() || "mp4";
+      const name = v.file_name || `${Date.now()}.${ext}`;
+      const filePath = await downloadFile(v.file_id, name);
+      if (filePath) {
+        attachments.push({
+          type: "video",
+          filePath,
+          mimeType: v.mime_type || undefined,
+          fileName: v.file_name || undefined,
+          duration: v.duration,
+        });
+      }
+    }
+
+    // Document
+    if (ctx.message?.document) {
+      const d = ctx.message.document;
+      const name = d.file_name || `${Date.now()}.bin`;
+      const filePath = await downloadFile(d.file_id, name);
+      if (filePath) {
+        attachments.push({
+          type: "document",
+          filePath,
+          mimeType: d.mime_type || undefined,
+          fileName: d.file_name || undefined,
+        });
+      }
+    }
+
+    // Sticker
+    if (ctx.message?.sticker) {
+      const s = ctx.message.sticker;
+      const name = `${Date.now()}.webp`;
+      const filePath = await downloadFile(s.file_id, name);
+      if (filePath) {
+        attachments.push({
+          type: "sticker",
+          filePath,
+          mimeType: "image/webp",
+        });
+      }
+    }
+
+    // Video note (round video)
+    if (ctx.message?.video_note) {
+      const vn = ctx.message.video_note;
+      const name = `${Date.now()}.mp4`;
+      const filePath = await downloadFile(vn.file_id, name);
+      if (filePath) {
+        attachments.push({
+          type: "video",
+          filePath,
+          mimeType: "video/mp4",
+          duration: vn.duration,
+        });
+      }
+    }
+
+    // Skip if nothing to process
+    if (!text && attachments.length === 0) return;
+
+    // Default text for media-only messages
+    if (!text && attachments.length > 0) {
+      text = `[Sent ${attachments[0]!.type}]`;
+    }
+
     const msg: IncomingMessage = {
       channel: "telegram",
       sender,
       senderName:
         ctx.from?.first_name +
         (ctx.from?.last_name ? ` ${ctx.from.last_name}` : ""),
-      text: ctx.message.text,
-      timestamp: ctx.message.date * 1000,
+      text,
+      timestamp: ctx.message!.date * 1000,
+      attachments: attachments.length > 0 ? attachments : undefined,
       raw: ctx,
     };
 
-    const reply: ReplyFn = async (text: string) => {
+    const reply: ReplyFn = async (replyText: string) => {
       // Telegram has a 4096 char limit per message
-      const chunks = splitMessage(text, 4096);
+      const chunks = splitMessage(replyText, 4096);
       for (const chunk of chunks) {
         await ctx.reply(chunk);
       }

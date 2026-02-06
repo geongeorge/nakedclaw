@@ -39,19 +39,38 @@ export async function handleMessage(
     if (handled) return;
   }
 
+  // Build the full message for the agent — include attachment context
+  let agentText = text;
+  if (msg.attachments && msg.attachments.length > 0) {
+    const parts: string[] = [];
+    for (const att of msg.attachments) {
+      let desc = `[${att.type}`;
+      if (att.fileName) desc += `: ${att.fileName}`;
+      if (att.mimeType) desc += ` (${att.mimeType})`;
+      if (att.duration) desc += `, ${att.duration}s`;
+      desc += `]\nFile saved to: ${att.filePath}`;
+      if (att.caption) desc += `\nCaption: ${att.caption}`;
+      parts.push(desc);
+    }
+    const attachmentContext = parts.join("\n");
+    agentText = agentText
+      ? `${agentText}\n\n${attachmentContext}`
+      : attachmentContext;
+  }
+
   // Save user message
   appendMessage(key, {
     role: "user",
-    content: text,
+    content: agentText,
     timestamp: msg.timestamp,
     channel: msg.channel,
     sender: msg.sender,
   });
-  appendChat(msg.channel, msg.sender, "user", text);
+  appendChat(msg.channel, msg.sender, "user", agentText);
 
   // Run agent
   try {
-    const result = await runAgent(key, text);
+    const result = await runAgent(key, agentText);
 
     // Save agent response
     appendMessage(key, {
