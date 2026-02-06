@@ -34,6 +34,10 @@ All the good functionality. None of the clothes. Truly naked.
 - **Config hot-reload** — edit `nakedclaw.json5` and heartbeat/scheduler update automatically
 - **Skills** — NakedClaw reaches its long, naked claw into the [openclaw](https://github.com/openclaw/openclaw) skill catalog and shamelessly steals every single skill. 100% compatible with all openclaw skills — turns out you don't need clothes to be talented
 
+<p align="center">
+  <img src="public/nakedclaw-in-terminal.png" width="700" alt="NakedClaw terminal chat" />
+</p>
+
 ## Quick start
 
 ```bash
@@ -72,7 +76,16 @@ nakedclaw skills info <name>     show skill details
 nakedclaw help         show help
 ```
 
+<p align="center">
+  <img src="public/nakedclaw-sessions.png" width="700" alt="NakedClaw session browser" />
+  Manage and view sessions in terminal
+</p>
+
 ## Channels
+
+<p align="center">
+  <img src="public/nakedclaw-in-whatsapp.png" width="350" alt="NakedClaw on WhatsApp" />
+</p>
 
 **Terminal** is always available — just run `nakedclaw`. For messaging channels, use the connect wizard:
 
