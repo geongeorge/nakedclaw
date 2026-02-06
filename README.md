@@ -8,6 +8,23 @@
 
 NakedClaw is a self-improving AI agent that runs as a background daemon on your machine. Chat with it from your terminal, WhatsApp, Telegram, or Slack — and it can edit its own source code to add features, fix bugs, and grow.
 
+## Why NakedClaw?
+
+[OpenClaw](https://github.com/openclaw/openclaw) is great, but it's wearing a lot of clothes:
+
+- A **macOS app** (204 Swift files, code signing, notarization, DMG packaging)
+- An **iOS app** (28 Swift files, Xcode provisioning)
+- An **Android app** (63 Kotlin files, Gradle build)
+- A **web dashboard** (113 files, Lit components, Vite, Playwright)
+- **127 npm dependencies** including sharp, pdfjs, playwright, AWS Bedrock SDK
+- **617 documentation files** + a full Chinese translation pipeline
+- **7 CI/CD workflows**, Docker images, 50+ release scripts
+- **451,926 lines of code** across 2,581 files
+
+NakedClaw strips all of that away. No Mac app. No web server. No mobile apps. No 32 channel plugins. No Docker. No CI. Just a daemon, a CLI, and two messaging channels. ~3,000 lines of TypeScript.
+
+All the good functionality. None of the clothes. Truly naked.
+
 ## Features
 
 - **Memory** — all chats saved as markdown in `memory/`, searchable, with `memory.md` loaded every session
