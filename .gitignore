@@ -34,14 +34,17 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 
 # sessions and memory (runtime data)
-sessions/
-memory/
+sessions/*
+!sessions/.gitkeep
+memory/*
+!memory/.gitkeep
 
 # channel auth state
 .wa-auth/
 
 # cached skill files
-skills/
+skills/*
+!skills/.gitkeep
 
 # downloaded media from channels
 media/

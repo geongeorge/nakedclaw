@@ -1,4 +1,4 @@
-import { completeSimple, getModel, type Message } from "@mariozechner/pi-ai";
+import { completeSimple, getModel, type Message, type ToolResultMessage } from "@mariozechner/pi-ai";
 import { getApiKeyForProvider } from "./auth/credentials.ts";
 import { loadChannels, loadPersistentMemory, loadSystemPrompt } from "./brain/loader.ts";
 import { loadSkillsPrompt } from "./skills/loader.ts";
@@ -7,6 +7,7 @@ import { rebuildMemoryIndex } from "./memory/store.ts";
 import { getMessages, type SessionMessage } from "./session.ts";
 import type { Attachment } from "./channels/types.ts";
 import { readImageAsBase64 } from "./media.ts";
+import { allTools, executeTool } from "./tools.ts";
 
 export type AgentResponse = {
   text: string;
@@ -49,27 +50,62 @@ export async function runAgent(
     options.temperature = 0.7;
   }
 
-  const res = await completeSimple(
-    model,
-    {
-      systemPrompt,
-      messages,
-    },
-    options
-  );
+  const MAX_TOOL_ITERATIONS = 10;
+  const toolCallLog: AgentResponse["toolCalls"] = [];
 
-  // Check for API errors surfaced through the response
-  if (res.errorMessage) {
-    throw new Error(res.errorMessage);
+  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    const res = await completeSimple(
+      model,
+      { systemPrompt, messages, tools: allTools },
+      options
+    );
+
+    if (res.errorMessage) {
+      throw new Error(res.errorMessage);
+    }
+
+    // Push assistant message into conversation for multi-turn tool use
+    messages.push(res);
+
+    if (res.stopReason !== "toolUse") {
+      // Final text response — extract and return
+      const text =
+        res.content
+          .filter((block) => block.type === "text")
+          .map((block) => ("text" in block ? block.text : ""))
+          .join("\n") || "(no response)";
+
+      return { text, toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined };
+    }
+
+    // Execute each tool call and push results
+    const toolCalls = res.content.filter((block) => block.type === "toolCall");
+
+    for (const call of toolCalls) {
+      if (call.type !== "toolCall") continue;
+      const result = await executeTool(call.name, call.arguments);
+
+      toolCallLog.push({
+        name: call.name,
+        input: call.arguments,
+        output: result.content.map((c) => c.text).join("\n"),
+      });
+
+      const toolResult: ToolResultMessage = {
+        role: "toolResult",
+        toolCallId: call.id,
+        toolName: call.name,
+        content: result.content,
+        isError: result.isError,
+        timestamp: Date.now(),
+      };
+      messages.push(toolResult);
+    }
   }
 
-  const text =
-    res.content
-      .filter((block) => block.type === "text")
-      .map((block) => "text" in block ? block.text : "")
-      .join("\n") || "(no response)";
-
-  return { text };
+  // If we exhaust iterations, return whatever text we have
+  console.log("[agent] Tool loop hit max iterations");
+  return { text: "(max tool iterations reached)", toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined };
 }
 
 async function buildSystemPrompt(workspace: string, memoryContext: string): Promise<string> {
