@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/nakedclaw.svg" width="80" alt="NakedClaw logo" />
+  <img src="public/nakedclaw.png" width="80" alt="NakedClaw logo" />
 </p>
 
 # NakedClaw
