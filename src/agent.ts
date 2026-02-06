@@ -1,10 +1,13 @@
-import { completeSimple, getModel, type Message } from "@mariozechner/pi-ai";
+import { completeSimple, getModel, type Message, type ToolResultMessage } from "@mariozechner/pi-ai";
 import { getApiKeyForProvider } from "./auth/credentials.ts";
 import { loadChannels, loadPersistentMemory, loadSystemPrompt } from "./brain/loader.ts";
 import { loadSkillsPrompt } from "./skills/loader.ts";
 import { loadConfig } from "./config.ts";
 import { rebuildMemoryIndex } from "./memory/store.ts";
 import { getMessages, type SessionMessage } from "./session.ts";
+import type { Attachment } from "./channels/types.ts";
+import { readImageAsBase64 } from "./media.ts";
+import { allTools, executeTool, type ToolContext } from "./tools.ts";
 
 export type AgentResponse = {
   text: string;
@@ -13,7 +16,8 @@ export type AgentResponse = {
 
 export async function runAgent(
   sessionKey: string,
-  userMessage: string
+  userMessage: string,
+  attachments?: Attachment[]
 ): Promise<AgentResponse> {
   const config = loadConfig();
   const provider = config.model.provider || "anthropic";
@@ -34,7 +38,8 @@ export async function runAgent(
 
   // Build messages for the API
   const systemPrompt = await buildSystemPrompt(config.workspace, memoryContext);
-  const messages = historyToApiMessages(history, userMessage, model.api, provider);
+  const supportsVision = model.input.includes("image");
+  const messages = historyToApiMessages(history, userMessage, model.api, provider, supportsVision, attachments);
 
   // Only pass temperature for non-reasoning models (OpenAI reasoning models reject it)
   const options: Record<string, any> = {
@@ -45,27 +50,75 @@ export async function runAgent(
     options.temperature = 0.7;
   }
 
-  const res = await completeSimple(
-    model,
-    {
-      systemPrompt,
-      messages,
-    },
-    options
-  );
+  // Extract channel + sender from session key for tool context (e.g. send_file)
+  const colonIdx = sessionKey.indexOf(":");
+  const toolContext: ToolContext | undefined = colonIdx > 0
+    ? { channel: sessionKey.slice(0, colonIdx), sender: sessionKey.slice(colonIdx + 1) }
+    : undefined;
 
-  // Check for API errors surfaced through the response
-  if (res.errorMessage) {
-    throw new Error(res.errorMessage);
+  const MAX_TOOL_ITERATIONS = 10;
+  const toolCallLog: AgentResponse["toolCalls"] = [];
+
+  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
+    const res = await completeSimple(
+      model,
+      { systemPrompt, messages, tools: allTools },
+      options
+    );
+
+    if (res.errorMessage) {
+      if (res.errorMessage.includes("only authorized for use with Claude Code")) {
+        throw new Error(
+          "Your OAuth token is restricted to Claude Code and can't be used for external API calls.\n" +
+          "Fix: set ANTHROPIC_API_KEY or run `nakedclaw setup` and choose API key auth.\n" +
+          "Get a key at https://console.anthropic.com/settings/keys"
+        );
+      }
+      throw new Error(res.errorMessage);
+    }
+
+    // Push assistant message into conversation for multi-turn tool use
+    messages.push(res);
+
+    if (res.stopReason !== "toolUse") {
+      // Final text response — extract and return
+      const text =
+        res.content
+          .filter((block) => block.type === "text")
+          .map((block) => ("text" in block ? block.text : ""))
+          .join("\n") || "(no response)";
+
+      return { text, toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined };
+    }
+
+    // Execute each tool call and push results
+    const toolCalls = res.content.filter((block) => block.type === "toolCall");
+
+    for (const call of toolCalls) {
+      if (call.type !== "toolCall") continue;
+      const result = await executeTool(call.name, call.arguments, toolContext);
+
+      toolCallLog.push({
+        name: call.name,
+        input: call.arguments,
+        output: result.content.map((c) => c.text).join("\n"),
+      });
+
+      const toolResult: ToolResultMessage = {
+        role: "toolResult",
+        toolCallId: call.id,
+        toolName: call.name,
+        content: result.content,
+        isError: result.isError,
+        timestamp: Date.now(),
+      };
+      messages.push(toolResult);
+    }
   }
 
-  const text =
-    res.content
-      .filter((block) => block.type === "text")
-      .map((block) => "text" in block ? block.text : "")
-      .join("\n") || "(no response)";
-
-  return { text };
+  // If we exhaust iterations, return whatever text we have
+  console.log("[agent] Tool loop hit max iterations");
+  return { text: "(max tool iterations reached)", toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined };
 }
 
 async function buildSystemPrompt(workspace: string, memoryContext: string): Promise<string> {
@@ -95,18 +148,48 @@ async function buildSystemPrompt(workspace: string, memoryContext: string): Prom
   return parts.join("\n\n");
 }
 
+function buildUserContent(
+  text: string,
+  sessionAttachments: SessionMessage["attachments"] | undefined,
+  supportsVision: boolean
+): string | Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> {
+  if (!supportsVision || !sessionAttachments || sessionAttachments.length === 0) {
+    return text;
+  }
+
+  const imageAttachments = sessionAttachments.filter((a) => a.type === "image");
+  if (imageAttachments.length === 0) return text;
+
+  const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [];
+  if (text) {
+    content.push({ type: "text", text });
+  }
+
+  for (const att of imageAttachments) {
+    const img = readImageAsBase64(att.filePath);
+    if (img) {
+      content.push({ type: "image", data: img.data, mimeType: img.mimeType });
+    }
+  }
+
+  return content.length === 1 && content[0]!.type === "text" ? text : content;
+}
+
 function historyToApiMessages(
   history: SessionMessage[],
   currentMessage: string,
   api: string,
-  provider: string
+  provider: string,
+  supportsVision: boolean,
+  currentAttachments?: Attachment[]
 ): Message[] {
   const msgs: Message[] = [];
   const now = Date.now();
 
   for (const h of history) {
     if (h.role === "user") {
-      msgs.push({ role: "user", content: h.content, timestamp: now });
+      const content = buildUserContent(h.content, h.attachments, supportsVision);
+      msgs.push({ role: "user", content, timestamp: now });
     } else if (h.role === "assistant") {
       msgs.push({
         role: "assistant",
@@ -121,6 +204,13 @@ function historyToApiMessages(
     }
   }
 
-  msgs.push({ role: "user", content: currentMessage, timestamp: now });
+  // Current message — convert channel attachments to session format for buildUserContent
+  const sessionAtts = currentAttachments?.map((a) => ({
+    type: a.type,
+    filePath: a.filePath,
+    mimeType: a.mimeType,
+  }));
+  const content = buildUserContent(currentMessage, sessionAtts, supportsVision);
+  msgs.push({ role: "user", content, timestamp: now });
   return msgs;
 }

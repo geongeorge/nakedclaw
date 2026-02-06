@@ -5,11 +5,12 @@ import makeWASocket, {
   type WASocket,
   type WAMessage,
 } from "@whiskeysockets/baileys";
-import { mkdirSync, existsSync, writeFileSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { mkdirSync, existsSync, writeFileSync, readFileSync } from "node:fs";
+import { resolve, join, basename } from "node:path";
 import qrcode from "qrcode-terminal";
 import type { Attachment, ChannelAdapter, IncomingMessage, ReplyFn } from "./types.ts";
 import type { ChannelConfig } from "../config.ts";
+import { registerChannelSender, detectMediaType } from "./registry.ts";
 
 const MEDIA_DIR = resolve(import.meta.dir, "../../media/whatsapp");
 
@@ -154,6 +155,37 @@ export function createWhatsAppAdapter(
           }
         } else if (connection === "open") {
           console.log("[whatsapp] Connected");
+
+          // Register file sender so agent can send images/files back
+          const currentSock = sock!;
+          registerChannelSender("whatsapp", {
+            async sendFile({ recipient, filePath, caption }) {
+              const mediaType = detectMediaType(filePath);
+              const buffer = readFileSync(filePath);
+
+              switch (mediaType) {
+                case "image":
+                  await currentSock.sendMessage(recipient, { image: buffer, caption });
+                  break;
+                case "video":
+                  await currentSock.sendMessage(recipient, { video: buffer, caption });
+                  break;
+                case "audio":
+                  await currentSock.sendMessage(recipient, { audio: buffer, ptt: false });
+                  break;
+                default:
+                  await currentSock.sendMessage(recipient, {
+                    document: buffer,
+                    mimetype: "application/octet-stream",
+                    fileName: basename(filePath),
+                    caption,
+                  });
+                  break;
+              }
+              console.log(`[whatsapp] Sent ${mediaType} to ${recipient}`);
+            },
+          });
+
           onConnected?.();
         }
       });

@@ -8,6 +8,7 @@ export type SessionMessage = {
   timestamp: number;
   channel?: string;
   sender?: string;
+  attachments?: Array<{ type: string; filePath: string; mimeType?: string }>;
 };
 
 /**

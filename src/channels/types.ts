@@ -5,6 +5,8 @@ export type Attachment = {
   fileName?: string;
   duration?: number;
   caption?: string;
+  /** Set by router after Whisper transcription */
+  _transcription?: string;
 };
 
 export type IncomingMessage = {

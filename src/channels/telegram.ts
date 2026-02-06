@@ -1,10 +1,14 @@
-import { Bot } from "grammy";
+import { Bot, InputFile } from "grammy";
 import { mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { resolve, join } from "node:path";
 import type { Attachment, ChannelAdapter, IncomingMessage, ReplyFn } from "./types.ts";
 import type { ChannelConfig } from "../config.ts";
+import { registerChannelSender, detectMediaType } from "./registry.ts";
 
 const MEDIA_DIR = resolve(import.meta.dir, "../../media/telegram");
+
+/** Maps sender string (@username or numeric ID) → numeric chat ID for outbound messages */
+const chatIdMap = new Map<string, number>();
 
 export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -59,6 +63,9 @@ export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
     ) {
       return;
     }
+
+    // Track sender → chatId for outbound file sends
+    chatIdMap.set(sender, ctx.chat.id);
 
     // Send typing indicator immediately
     try {
@@ -225,6 +232,40 @@ export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
       // Init first to validate token before returning
       await bot.init();
       console.log(`[telegram] Bot initialized: @${bot.botInfo.username}`);
+
+      // Register file sender so agent can send images/files back
+      registerChannelSender("telegram", {
+        async sendFile({ recipient, filePath, caption }) {
+          // Resolve numeric chat ID from sender string
+          let chatId: number;
+          if (chatIdMap.has(recipient)) {
+            chatId = chatIdMap.get(recipient)!;
+          } else {
+            const parsed = parseInt(recipient, 10);
+            if (isNaN(parsed)) throw new Error(`Unknown Telegram recipient: ${recipient}`);
+            chatId = parsed;
+          }
+
+          const mediaType = detectMediaType(filePath);
+          const file = new InputFile(filePath);
+
+          switch (mediaType) {
+            case "image":
+              await bot.api.sendPhoto(chatId, file, { caption });
+              break;
+            case "video":
+              await bot.api.sendVideo(chatId, file, { caption });
+              break;
+            case "audio":
+              await bot.api.sendAudio(chatId, file, { caption });
+              break;
+            default:
+              await bot.api.sendDocument(chatId, file, { caption });
+              break;
+          }
+          console.log(`[telegram] Sent ${mediaType} to ${recipient}`);
+        },
+      });
 
       // Start polling in background (resolves when bot stops)
       bot.start({

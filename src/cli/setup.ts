@@ -5,7 +5,6 @@ import {
   removeProviderCredential,
   type CredentialsStore,
 } from "../auth/credentials.ts";
-import { ANTHROPIC_OAUTH } from "../auth/oauth.ts";
 import { loginOpenAICodex } from "@mariozechner/pi-ai";
 import { createInterface } from "readline";
 
@@ -34,6 +33,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",
+  whisper: "Whisper",
 };
 
 function showSavedCredentials(store: CredentialsStore): void {
@@ -58,7 +58,8 @@ function showSavedCredentials(store: CredentialsStore): void {
 
 async function addAnthropicSetupToken(): Promise<void> {
   console.log(
-    `\n${YELLOW}Run ${BOLD}claude setup-token${RESET}${YELLOW} in another terminal, then paste the token here.${RESET}\n`
+    `\n${YELLOW}Run ${BOLD}claude setup-token${RESET}${YELLOW} in another terminal, then paste the token here.${RESET}\n` +
+    `${DIM}The token starts with sk-ant-oat01-${RESET}\n`
   );
   const token = await prompt("Setup token: ");
   if (!token) {
@@ -66,42 +67,14 @@ async function addAnthropicSetupToken(): Promise<void> {
     return;
   }
 
-  try {
-    const parsed = JSON.parse(token);
-    saveProviderCredential("anthropic", {
-      method: "oauth",
-      oauth: {
-        accessToken: parsed.accessToken || parsed.access_token,
-        refreshToken: parsed.refreshToken || parsed.refresh_token,
-        expiresAt:
-          parsed.expiresAt ||
-          (parsed.expires_in
-            ? Date.now() + parsed.expires_in * 1000
-            : Date.now() + 8 * 60 * 60 * 1000),
-        clientId: ANTHROPIC_OAUTH.clientId,
-        tokenUrl: ANTHROPIC_OAUTH.tokenUrl,
-      },
-    });
-    console.log(`${GREEN}Anthropic OAuth credentials saved.${RESET}`);
-  } catch {
-    if (token.startsWith("sk-ant-oat")) {
-      saveProviderCredential("anthropic", {
-        method: "oauth",
-        oauth: {
-          accessToken: token,
-          refreshToken: "",
-          expiresAt: Date.now() + 8 * 60 * 60 * 1000,
-          clientId: ANTHROPIC_OAUTH.clientId,
-          tokenUrl: ANTHROPIC_OAUTH.tokenUrl,
-        },
-      });
-      console.log(
-        `${GREEN}Access token saved.${RESET} ${DIM}(no refresh token — re-run setup when it expires)${RESET}`
-      );
-    } else {
-      console.log("Unrecognized token format.");
-    }
+  if (!token.startsWith("sk-ant-oat")) {
+    console.log(`${RED}Expected a token starting with sk-ant-oat01-${RESET}`);
+    console.log(`${DIM}Run "claude setup-token" in another terminal to generate one.${RESET}`);
+    return;
   }
+
+  saveProviderCredential("anthropic", { method: "api_key", apiKey: token });
+  console.log(`${GREEN}Anthropic setup token saved.${RESET}`);
 }
 
 async function addAnthropicApiKey(): Promise<void> {
@@ -156,6 +129,16 @@ async function addOpenAICodex(): Promise<void> {
   }
 }
 
+async function addWhisperApiKey(): Promise<void> {
+  const key = await prompt("\nOpenAI API Key (for Whisper): ");
+  if (!key) {
+    console.log("No key provided.");
+    return;
+  }
+  saveProviderCredential("whisper", { method: "api_key", apiKey: key });
+  console.log(`${GREEN}Whisper API key saved.${RESET}`);
+}
+
 async function deleteCredential(store: CredentialsStore): Promise<void> {
   const providers = Object.keys(store);
   if (providers.length === 0) {
@@ -198,6 +181,7 @@ async function main() {
     console.log(`  ${BOLD}[2]${RESET} Add Anthropic ${DIM}(API key)${RESET}`);
     console.log(`  ${BOLD}[3]${RESET} Add OpenAI ${DIM}(API key)${RESET}`);
     console.log(`  ${BOLD}[4]${RESET} Add OpenAI Codex ${DIM}(ChatGPT subscription)${RESET}`);
+    console.log(`  ${BOLD}[5]${RESET} Add Whisper API key ${DIM}(OpenAI)${RESET}`);
     if (Object.keys(store).length > 0) {
       console.log(`  ${BOLD}[d]${RESET} Delete a credential`);
     }
@@ -214,6 +198,8 @@ async function main() {
       await addOpenAIApiKey();
     } else if (choice === "4") {
       await addOpenAICodex();
+    } else if (choice === "5") {
+      await addWhisperApiKey();
     } else if (choice.toLowerCase() === "d" && Object.keys(store).length > 0) {
       await deleteCredential(store);
     } else if (choice.toLowerCase() === "q") {

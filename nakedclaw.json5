@@ -1,7 +1,7 @@
 {
   model: {
-    provider: 'anthropic',
-    name: 'claude-opus-4-6',
+    provider: 'openai-codex',
+    name: 'gpt-5.3-codex',
   },
   workspace: '.',
   channels: {
