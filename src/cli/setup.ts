@@ -34,6 +34,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",
+  whisper: "Whisper",
 };
 
 function showSavedCredentials(store: CredentialsStore): void {
@@ -156,6 +157,16 @@ async function addOpenAICodex(): Promise<void> {
   }
 }
 
+async function addWhisperApiKey(): Promise<void> {
+  const key = await prompt("\nOpenAI API Key (for Whisper): ");
+  if (!key) {
+    console.log("No key provided.");
+    return;
+  }
+  saveProviderCredential("whisper", { method: "api_key", apiKey: key });
+  console.log(`${GREEN}Whisper API key saved.${RESET}`);
+}
+
 async function deleteCredential(store: CredentialsStore): Promise<void> {
   const providers = Object.keys(store);
   if (providers.length === 0) {
@@ -198,6 +209,7 @@ async function main() {
     console.log(`  ${BOLD}[2]${RESET} Add Anthropic ${DIM}(API key)${RESET}`);
     console.log(`  ${BOLD}[3]${RESET} Add OpenAI ${DIM}(API key)${RESET}`);
     console.log(`  ${BOLD}[4]${RESET} Add OpenAI Codex ${DIM}(ChatGPT subscription)${RESET}`);
+    console.log(`  ${BOLD}[5]${RESET} Add Whisper API key ${DIM}(OpenAI)${RESET}`);
     if (Object.keys(store).length > 0) {
       console.log(`  ${BOLD}[d]${RESET} Delete a credential`);
     }
@@ -214,6 +226,8 @@ async function main() {
       await addOpenAIApiKey();
     } else if (choice === "4") {
       await addOpenAICodex();
+    } else if (choice === "5") {
+      await addWhisperApiKey();
     } else if (choice.toLowerCase() === "d" && Object.keys(store).length > 0) {
       await deleteCredential(store);
     } else if (choice.toLowerCase() === "q") {

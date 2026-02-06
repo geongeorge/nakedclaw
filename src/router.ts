@@ -8,6 +8,7 @@ import {
   listSessions,
 } from "./memory/store.ts";
 import { clearSession } from "./session.ts";
+import { transcribeAudio } from "./media.ts";
 import {
   addJob,
   listJobs,
@@ -39,24 +40,47 @@ export async function handleMessage(
     if (handled) return;
   }
 
+  // Transcribe audio/voice attachments before building text
+  if (msg.attachments && msg.attachments.length > 0) {
+    for (const att of msg.attachments) {
+      if (att.type === "audio" || att.type === "voice") {
+        const transcription = await transcribeAudio(att.filePath);
+        if (transcription) {
+          att._transcription = transcription;
+        }
+      }
+    }
+  }
+
   // Build the full message for the agent — include attachment context
   let agentText = text;
   if (msg.attachments && msg.attachments.length > 0) {
     const parts: string[] = [];
     for (const att of msg.attachments) {
-      let desc = `[${att.type}`;
-      if (att.fileName) desc += `: ${att.fileName}`;
-      if (att.mimeType) desc += ` (${att.mimeType})`;
-      if (att.duration) desc += `, ${att.duration}s`;
-      desc += `]\nFile saved to: ${att.filePath}`;
-      if (att.caption) desc += `\nCaption: ${att.caption}`;
-      parts.push(desc);
+      if (att._transcription) {
+        parts.push(`[Voice transcription]\n"${att._transcription}"`);
+      } else {
+        let desc = `[${att.type}`;
+        if (att.fileName) desc += `: ${att.fileName}`;
+        if (att.mimeType) desc += ` (${att.mimeType})`;
+        if (att.duration) desc += `, ${att.duration}s`;
+        desc += `]\nFile saved to: ${att.filePath}`;
+        if (att.caption) desc += `\nCaption: ${att.caption}`;
+        parts.push(desc);
+      }
     }
     const attachmentContext = parts.join("\n");
     agentText = agentText
       ? `${agentText}\n\n${attachmentContext}`
       : attachmentContext;
   }
+
+  // Convert channel attachments to session format
+  const sessionAttachments = msg.attachments?.map((att) => ({
+    type: att.type,
+    filePath: att.filePath,
+    mimeType: att.mimeType,
+  }));
 
   // Save user message
   appendMessage(key, {
@@ -65,12 +89,13 @@ export async function handleMessage(
     timestamp: msg.timestamp,
     channel: msg.channel,
     sender: msg.sender,
+    attachments: sessionAttachments,
   });
   appendChat(msg.channel, msg.sender, "user", agentText);
 
   // Run agent
   try {
-    const result = await runAgent(key, agentText);
+    const result = await runAgent(key, agentText, msg.attachments);
 
     // Save agent response
     appendMessage(key, {

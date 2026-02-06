@@ -5,6 +5,8 @@ import { loadSkillsPrompt } from "./skills/loader.ts";
 import { loadConfig } from "./config.ts";
 import { rebuildMemoryIndex } from "./memory/store.ts";
 import { getMessages, type SessionMessage } from "./session.ts";
+import type { Attachment } from "./channels/types.ts";
+import { readImageAsBase64 } from "./media.ts";
 
 export type AgentResponse = {
   text: string;
@@ -13,7 +15,8 @@ export type AgentResponse = {
 
 export async function runAgent(
   sessionKey: string,
-  userMessage: string
+  userMessage: string,
+  attachments?: Attachment[]
 ): Promise<AgentResponse> {
   const config = loadConfig();
   const provider = config.model.provider || "anthropic";
@@ -34,7 +37,8 @@ export async function runAgent(
 
   // Build messages for the API
   const systemPrompt = await buildSystemPrompt(config.workspace, memoryContext);
-  const messages = historyToApiMessages(history, userMessage, model.api, provider);
+  const supportsVision = model.input.includes("image");
+  const messages = historyToApiMessages(history, userMessage, model.api, provider, supportsVision, attachments);
 
   // Only pass temperature for non-reasoning models (OpenAI reasoning models reject it)
   const options: Record<string, any> = {
@@ -95,18 +99,48 @@ async function buildSystemPrompt(workspace: string, memoryContext: string): Prom
   return parts.join("\n\n");
 }
 
+function buildUserContent(
+  text: string,
+  sessionAttachments: SessionMessage["attachments"] | undefined,
+  supportsVision: boolean
+): string | Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> {
+  if (!supportsVision || !sessionAttachments || sessionAttachments.length === 0) {
+    return text;
+  }
+
+  const imageAttachments = sessionAttachments.filter((a) => a.type === "image");
+  if (imageAttachments.length === 0) return text;
+
+  const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [];
+  if (text) {
+    content.push({ type: "text", text });
+  }
+
+  for (const att of imageAttachments) {
+    const img = readImageAsBase64(att.filePath);
+    if (img) {
+      content.push({ type: "image", data: img.data, mimeType: img.mimeType });
+    }
+  }
+
+  return content.length === 1 && content[0]!.type === "text" ? text : content;
+}
+
 function historyToApiMessages(
   history: SessionMessage[],
   currentMessage: string,
   api: string,
-  provider: string
+  provider: string,
+  supportsVision: boolean,
+  currentAttachments?: Attachment[]
 ): Message[] {
   const msgs: Message[] = [];
   const now = Date.now();
 
   for (const h of history) {
     if (h.role === "user") {
-      msgs.push({ role: "user", content: h.content, timestamp: now });
+      const content = buildUserContent(h.content, h.attachments, supportsVision);
+      msgs.push({ role: "user", content, timestamp: now });
     } else if (h.role === "assistant") {
       msgs.push({
         role: "assistant",
@@ -121,6 +155,13 @@ function historyToApiMessages(
     }
   }
 
-  msgs.push({ role: "user", content: currentMessage, timestamp: now });
+  // Current message — convert channel attachments to session format for buildUserContent
+  const sessionAtts = currentAttachments?.map((a) => ({
+    type: a.type,
+    filePath: a.filePath,
+    mimeType: a.mimeType,
+  }));
+  const content = buildUserContent(currentMessage, sessionAtts, supportsVision);
+  msgs.push({ role: "user", content, timestamp: now });
   return msgs;
 }
