@@ -69,23 +69,37 @@ export async function handleSkillsCli(args: string[]): Promise<void> {
     }
 
     default: {
-      const cached = loadCachedCatalog();
+      let cached = loadCachedCatalog();
       if (cached.length === 0) {
-        console.log("No skills cached. Run: nakedclaw skills sync");
-        return;
+        console.log("No skills cached. Syncing from openclaw...\n");
+        try {
+          cached = await syncCatalog();
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          console.error(`Sync failed: ${errMsg}`);
+          process.exit(1);
+        }
       }
       const statuses = getSkillStatuses(cached);
-      const eligible = statuses.filter((s) => s.eligible).length;
+      const ready = statuses.filter((s) => s.eligible);
+      const notReady = statuses.filter((s) => !s.eligible);
 
-      console.log(`Skills (${eligible}/${statuses.length} ready)\n`);
-      for (const s of statuses) {
-        const icon = s.eligible ? "\u2713" : "\u2717";
-        console.log(`${icon} ${s.emoji || " "} ${s.name} \u2014 ${s.description}`);
-        if (!s.eligible && s.missing.bins.length) {
-          console.log(`  missing: ${s.missing.bins.join(", ")}`);
-        }
-        if (!s.eligible && s.missing.env.length) {
-          console.log(`  missing env: ${s.missing.env.join(", ")}`);
+      console.log(`Skills (${ready.length} ready, ${notReady.length} available to install)\n`);
+
+      console.log("READY:");
+      for (const s of ready) {
+        console.log(`  ${s.emoji || "\u2713"} ${s.name} \u2014 ${s.description}`);
+      }
+
+      console.log(`\nNOT INSTALLED (${notReady.length}):`);
+      for (const s of notReady) {
+        console.log(`  ${s.emoji || "\u2717"} ${s.name} \u2014 ${s.description}`);
+        const missing: string[] = [];
+        if (s.missing.bins.length) missing.push(`bins: ${s.missing.bins.join(", ")}`);
+        if (s.missing.env.length) missing.push(`env: ${s.missing.env.join(", ")}`);
+        if (missing.length) console.log(`    needs: ${missing.join("; ")}`);
+        if (s.install?.length) {
+          console.log(`    install: nakedclaw skills install ${s.name}`);
         }
       }
       break;

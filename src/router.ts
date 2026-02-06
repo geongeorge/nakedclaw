@@ -202,20 +202,38 @@ async function handleCommand(
         }
       } else if (arg.startsWith("install ")) {
         const name = arg.slice(8).trim();
+        await reply(`Installing ${name}...`);
         const result = await installSkillByName(name);
-        await reply(result.message);
+        await reply(result.ok ? `Installed ${name}.` : `Failed: ${result.message}`);
       } else {
         const statuses = await getAllSkillStatuses();
         if (statuses.length === 0) {
-          await reply('No skills cached. Use "/skills sync" to fetch.');
+          await reply("No skills found. Syncing...");
+          try {
+            await syncCatalog();
+            await reply("Synced. Run /skills again to see the list.");
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            await reply(`Sync failed: ${errMsg}`);
+          }
         } else {
-          const eligible = statuses.filter((s) => s.eligible).length;
-          let out = `Skills (${eligible}/${statuses.length} ready)\n\n`;
-          for (const s of statuses) {
-            const icon = s.eligible ? "\u2713" : "\u2717";
-            out += `${icon} ${s.emoji || ""} ${s.name} \u2014 ${s.description}\n`;
-            if (!s.eligible && s.missing.bins.length) {
-              out += `  missing: ${s.missing.bins.join(", ")}\n`;
+          const ready = statuses.filter((s) => s.eligible);
+          const notReady = statuses.filter((s) => !s.eligible);
+
+          let out = `Skills (${ready.length} ready, ${notReady.length} available to install)\n\n`;
+          out += "READY:\n";
+          for (const s of ready) {
+            out += `  ${s.emoji || "\u2713"} ${s.name} \u2014 ${s.description}\n`;
+          }
+          out += `\nNOT INSTALLED (${notReady.length}):\n`;
+          for (const s of notReady) {
+            out += `  ${s.emoji || "\u2717"} ${s.name} \u2014 ${s.description}\n`;
+            const missing: string[] = [];
+            if (s.missing.bins.length) missing.push(`bins: ${s.missing.bins.join(", ")}`);
+            if (s.missing.env.length) missing.push(`env: ${s.missing.env.join(", ")}`);
+            if (missing.length) out += `    needs: ${missing.join("; ")}\n`;
+            if (s.install?.length) {
+              out += `    install: /skills install ${s.name}\n`;
             }
           }
           await reply(out);
