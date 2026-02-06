@@ -50,30 +50,36 @@ All the good functionality. None of the clothes. Truly naked.
 bun install
 bun link
 
-nakedclaw setup     # authenticate with Anthropic
+nakedclaw setup     # authenticate (Anthropic or OpenAI)
 nakedclaw start     # start the daemon
 nakedclaw           # chat
 ```
 
 ## Auth
 
-NakedClaw supports two authentication methods:
+NakedClaw supports multiple authentication methods:
 
+**Anthropic:**
 - **Setup token** (recommended) — run `claude setup-token` in another terminal and paste the result
 - **API key** — paste your `sk-ant-api03-...` key directly
+
+**OpenAI:**
+- **API key** — paste your `sk-...` key
+- **Codex** (ChatGPT subscription) — browser-based OAuth login, no API key needed
 
 ## CLI
 
 ```
 nakedclaw              chat with the agent
-nakedclaw setup        authenticate with Anthropic
+nakedclaw setup        authenticate (Anthropic or OpenAI)
+nakedclaw models       interactive model/provider picker
+nakedclaw models set <provider>/<model>  set model directly
 nakedclaw start        start the background daemon
 nakedclaw stop         stop the daemon
 nakedclaw restart      restart the daemon
 nakedclaw status       show daemon status
 nakedclaw logs         tail daemon logs
 nakedclaw sessions     interactive session browser (live TUI)
-
 
 nakedclaw skills       list skills with eligibility
 nakedclaw skills sync  fetch skill catalog from GitHub

@@ -1,9 +1,9 @@
 {
   model: {
-    provider: "anthropic",
-    name: "claude-opus-4-6",
+    provider: 'anthropic',
+    name: 'claude-opus-4-6',
   },
-  workspace: ".",
+  workspace: '.',
   channels: {
     telegram: {
       enabled: true,
@@ -19,22 +19,22 @@
     },
   },
   sessions: {
-    dir: "./sessions",
+    dir: './sessions',
     maxTurns: 50,
   },
   memory: {
-    dir: "./memory",
-    indexFile: "./memory/memory.md",
+    dir: './memory',
+    indexFile: './memory/memory.md',
   },
   brain: {
-    dir: "./brain",
+    dir: './brain',
   },
   heartbeat: {
     enabled: false,
-    cronExpr: "0 * * * *",
+    cronExpr: '0 * * * *',
   },
   skills: {
-    dir: "./skills",
+    dir: './skills',
     autoSync: true,
   },
 }

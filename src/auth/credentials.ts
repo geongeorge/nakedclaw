@@ -1,6 +1,7 @@
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { refreshOpenAICodexToken } from "@mariozechner/pi-ai";
 
 export type OAuthCredentials = {
   accessToken: string;
@@ -10,9 +11,28 @@ export type OAuthCredentials = {
   tokenUrl: string;
 };
 
-export type Credentials =
+export type OpenAICodexCredentials = {
+  access: string;
+  refresh: string;
+  expires: number; // epoch ms
+  accountId: string;
+};
+
+/** A single provider's credential (the map key IS the provider) */
+export type ProviderCredential =
   | { method: "api_key"; apiKey: string }
-  | { method: "oauth"; oauth: OAuthCredentials };
+  | { method: "oauth"; oauth: OAuthCredentials }
+  | { method: "oauth"; openaiCodex: OpenAICodexCredentials };
+
+/** Map of provider → credential */
+export type CredentialsStore = Record<string, ProviderCredential>;
+
+/** @deprecated Use ProviderCredential instead */
+export type Credentials =
+  | { method: "api_key"; provider?: "anthropic"; apiKey: string }
+  | { method: "api_key"; provider: "openai"; apiKey: string }
+  | { method: "oauth"; provider?: "anthropic"; oauth: OAuthCredentials }
+  | { method: "oauth"; provider: "openai-codex"; openaiCodex: OpenAICodexCredentials };
 
 const STATE_DIR = join(homedir(), ".nakedclaw");
 const CREDS_PATH = join(STATE_DIR, "credentials.json");
@@ -31,29 +51,79 @@ export function ensureStateDir(): void {
   }
 }
 
-export function loadCredentials(): Credentials | null {
-  if (!existsSync(CREDS_PATH)) return null;
+/** Detect old single-credential format (has `method` at top level) */
+function isOldFormat(data: unknown): data is Credentials {
+  return typeof data === "object" && data !== null && "method" in data;
+}
+
+/** Migrate old single-credential to the new multi-provider map */
+function migrateOldCredentials(old: Credentials): CredentialsStore {
+  const provider =
+    "provider" in old && old.provider ? old.provider : "anthropic";
+
+  // Strip the provider field — the key IS the provider now
+  if ("apiKey" in old) {
+    return { [provider]: { method: "api_key", apiKey: old.apiKey } };
+  }
+  if ("oauth" in old) {
+    return { [provider]: { method: "oauth", oauth: old.oauth } };
+  }
+  if ("openaiCodex" in old) {
+    return { [provider]: { method: "oauth", openaiCodex: old.openaiCodex } };
+  }
+  return {};
+}
+
+/** Load all provider credentials. Auto-migrates old single-credential format. */
+export function loadAllCredentials(): CredentialsStore {
+  if (!existsSync(CREDS_PATH)) return {};
   try {
     const raw = readFileSync(CREDS_PATH, "utf-8");
-    return JSON.parse(raw) as Credentials;
+    const data = JSON.parse(raw);
+
+    if (isOldFormat(data)) {
+      const migrated = migrateOldCredentials(data);
+      // Persist the migrated format
+      ensureStateDir();
+      writeFileSync(CREDS_PATH, JSON.stringify(migrated, null, 2), "utf-8");
+      return migrated;
+    }
+
+    return data as CredentialsStore;
   } catch {
-    return null;
+    return {};
   }
 }
 
-export function saveCredentials(creds: Credentials): void {
+/** Save/update a single provider's credential */
+export function saveProviderCredential(
+  provider: string,
+  cred: ProviderCredential
+): void {
   ensureStateDir();
-  writeFileSync(CREDS_PATH, JSON.stringify(creds, null, 2), "utf-8");
+  const store = loadAllCredentials();
+  store[provider] = cred;
+  writeFileSync(CREDS_PATH, JSON.stringify(store, null, 2), "utf-8");
 }
 
-/** Refresh an OAuth token if expired. Returns the (possibly refreshed) access token. */
-async function refreshIfNeeded(oauth: OAuthCredentials): Promise<string> {
-  // 5 minute buffer before expiry
+/** Remove a provider's credential */
+export function removeProviderCredential(provider: string): void {
+  const store = loadAllCredentials();
+  delete store[provider];
+  ensureStateDir();
+  writeFileSync(CREDS_PATH, JSON.stringify(store, null, 2), "utf-8");
+}
+
+/** Refresh an Anthropic OAuth token if expired. Returns the (possibly refreshed) access token. */
+async function refreshAnthropicIfNeeded(
+  provider: string,
+  oauth: OAuthCredentials
+): Promise<string> {
   if (Date.now() < oauth.expiresAt - 5 * 60_000) {
     return oauth.accessToken;
   }
 
-  console.log("[auth] Refreshing OAuth token...");
+  console.log("[auth] Refreshing Anthropic OAuth token...");
 
   const response = await fetch(oauth.tokenUrl, {
     method: "POST",
@@ -83,43 +153,91 @@ async function refreshIfNeeded(oauth: OAuthCredentials): Promise<string> {
     expiresAt: Date.now() + data.expires_in * 1000,
   };
 
-  // Persist refreshed tokens
-  saveCredentials({ method: "oauth", oauth: updated });
-
+  saveProviderCredential(provider, { method: "oauth", oauth: updated });
   return updated.accessToken;
 }
 
+/** Refresh an OpenAI Codex token if expired. Returns the (possibly refreshed) access token. */
+async function refreshOpenAICodexIfNeeded(
+  provider: string,
+  codex: OpenAICodexCredentials
+): Promise<string> {
+  if (Date.now() < codex.expires - 5 * 60_000) {
+    return codex.access;
+  }
+
+  console.log("[auth] Refreshing OpenAI Codex token...");
+
+  const refreshed = await refreshOpenAICodexToken(codex.refresh);
+
+  const updated: OpenAICodexCredentials = {
+    access: refreshed.access,
+    refresh: refreshed.refresh,
+    expires: refreshed.expires,
+    accountId: codex.accountId,
+  };
+
+  saveProviderCredential(provider, { method: "oauth", openaiCodex: updated });
+  return updated.access;
+}
+
 /**
- * Get auth headers for the Anthropic API.
- * Supports both API key and OAuth token.
- * Automatically refreshes expired OAuth tokens.
+ * Get an API key for the given provider.
+ * Checks env vars first, then stored credentials.
+ * Automatically refreshes expired OAuth / Codex tokens.
+ */
+export async function getApiKeyForProvider(provider: string): Promise<string> {
+  // Env vars take priority
+  if (provider === "anthropic" || provider === "openai") {
+    const envVar = provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
+    const envKey = process.env[envVar];
+    if (envKey) return envKey;
+  }
+  if (provider === "openai-codex") {
+    const envKey = process.env.OPENAI_API_KEY;
+    if (envKey) return envKey;
+  }
+
+  const store = loadAllCredentials();
+  const cred = store[provider];
+
+  if (!cred) {
+    throw new Error(
+      `No credentials for ${provider}. Run: nakedclaw setup`
+    );
+  }
+
+  if (cred.method === "api_key") {
+    return cred.apiKey;
+  }
+
+  // OAuth — Anthropic
+  if ("oauth" in cred) {
+    return refreshAnthropicIfNeeded(provider, cred.oauth);
+  }
+
+  // OAuth — OpenAI Codex
+  if ("openaiCodex" in cred) {
+    return refreshOpenAICodexIfNeeded(provider, cred.openaiCodex);
+  }
+
+  throw new Error("Invalid credential state. Run: nakedclaw setup");
+}
+
+/**
+ * @deprecated Use getApiKeyForProvider() instead.
+ * Get auth headers for the Anthropic API (backward compat).
  */
 export async function getAuthHeaders(): Promise<Record<string, string>> {
-  // Env var takes priority
-  const envKey = process.env.ANTHROPIC_API_KEY;
-  if (envKey) {
+  const key = await getApiKeyForProvider("anthropic");
+  if (key.startsWith("sk-ant-oat")) {
     return {
-      "x-api-key": envKey,
+      Authorization: `Bearer ${key}`,
       "anthropic-version": "2023-06-01",
     };
   }
-
-  const creds = loadCredentials();
-  if (!creds) {
-    throw new Error("No credentials configured. Run: nakedclaw setup");
-  }
-
-  if (creds.method === "api_key") {
-    return {
-      "x-api-key": creds.apiKey,
-      "anthropic-version": "2023-06-01",
-    };
-  }
-
-  // OAuth
-  const token = await refreshIfNeeded(creds.oauth);
   return {
-    Authorization: `Bearer ${token}`,
+    "x-api-key": key,
     "anthropic-version": "2023-06-01",
   };
 }

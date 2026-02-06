@@ -67,6 +67,12 @@ switch (subcommand || "chat") {
     break;
   }
 
+  case "models": {
+    const { handleModelsCli } = await import("./cli/models.ts");
+    await handleModelsCli(process.argv.slice(3));
+    break;
+  }
+
   case "skills": {
     const { handleSkillsCli } = await import("./cli/skills.ts");
     await handleSkillsCli(process.argv.slice(3));
@@ -81,8 +87,9 @@ Usage: nakedclaw [command]
 
 Commands:
   (none)        Chat with the agent (connects to daemon)
-  setup         Configure credentials (OAuth or API key)
+  setup         Configure credentials (Anthropic or OpenAI)
   connect <ch>  Connect a channel (whatsapp/wa, telegram/tg, slack)
+  models        Interactive model/provider picker
   start         Start the daemon in background
   stop          Stop the daemon
   restart       Restart the daemon

@@ -1,5 +1,5 @@
 import { completeSimple, getModel, type Message } from "@mariozechner/pi-ai";
-import { loadCredentials } from "./auth/credentials.ts";
+import { getApiKeyForProvider } from "./auth/credentials.ts";
 import { loadChannels, loadPersistentMemory, loadSystemPrompt } from "./brain/loader.ts";
 import { loadSkillsPrompt } from "./skills/loader.ts";
 import { loadConfig } from "./config.ts";
@@ -11,24 +11,13 @@ export type AgentResponse = {
   toolCalls?: Array<{ name: string; input: unknown; output: string }>;
 };
 
-function getApiKey(): string {
-  // Env var takes priority
-  const envKey = process.env.ANTHROPIC_API_KEY;
-  if (envKey) return envKey;
-
-  const creds = loadCredentials();
-  if (!creds) throw new Error("No credentials configured. Run: nakedclaw setup");
-
-  if (creds.method === "api_key") return creds.apiKey;
-  return creds.oauth.accessToken;
-}
-
 export async function runAgent(
   sessionKey: string,
   userMessage: string
 ): Promise<AgentResponse> {
   const config = loadConfig();
-  const apiKey = getApiKey();
+  const provider = config.model.provider || "anthropic";
+  const apiKey = await getApiKeyForProvider(provider);
 
   // Rebuild memory index so agent has fresh context
   const memoryContext = rebuildMemoryIndex();
@@ -36,15 +25,24 @@ export async function runAgent(
   // Get conversation history
   const history = getMessages(sessionKey);
 
+  // Resolve the model through pi-ai (needed before building messages for the API string)
+  const modelRef = config.model.name as any;
+  const model = getModel(provider as any, modelRef);
+  if (!model) {
+    throw new Error(`Model not found: ${provider}/${modelRef}`);
+  }
+
   // Build messages for the API
   const systemPrompt = await buildSystemPrompt(config.workspace, memoryContext);
-  const messages = historyToApiMessages(history, userMessage);
+  const messages = historyToApiMessages(history, userMessage, model.api, provider);
 
-  // Resolve the model through pi-ai
-  const modelRef = config.model.name as any; // config may have any valid model string
-  const model = getModel("anthropic", modelRef) ?? getModel("anthropic", "claude-sonnet-4-5");
-  if (!model) {
-    throw new Error(`Model not found: ${modelRef}`);
+  // Only pass temperature for non-reasoning models (OpenAI reasoning models reject it)
+  const options: Record<string, any> = {
+    apiKey,
+    maxTokens: 4096,
+  };
+  if (!model.reasoning) {
+    options.temperature = 0.7;
   }
 
   const res = await completeSimple(
@@ -53,12 +51,13 @@ export async function runAgent(
       systemPrompt,
       messages,
     },
-    {
-      apiKey,
-      maxTokens: 4096,
-      temperature: 0.7,
-    }
+    options
   );
+
+  // Check for API errors surfaced through the response
+  if (res.errorMessage) {
+    throw new Error(res.errorMessage);
+  }
 
   const text =
     res.content
@@ -98,7 +97,9 @@ async function buildSystemPrompt(workspace: string, memoryContext: string): Prom
 
 function historyToApiMessages(
   history: SessionMessage[],
-  currentMessage: string
+  currentMessage: string,
+  api: string,
+  provider: string
 ): Message[] {
   const msgs: Message[] = [];
   const now = Date.now();
@@ -110,8 +111,8 @@ function historyToApiMessages(
       msgs.push({
         role: "assistant",
         content: [{ type: "text", text: h.content }],
-        api: "anthropic-messages",
-        provider: "anthropic",
+        api,
+        provider,
         model: "",
         usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
         stopReason: "stop",
