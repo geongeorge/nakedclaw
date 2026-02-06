@@ -71,12 +71,46 @@ nakedclaw help         show help
 
 ## Channels
 
-Enable channels in `nakedclaw.json5`:
+**Terminal** is always available — just run `nakedclaw`. For messaging channels, use the connect wizard:
 
-- **Terminal** — built-in, always available via `nakedclaw`
-- **WhatsApp** — scan QR code on first launch (check `nakedclaw logs`)
-- **Telegram** — set `TELEGRAM_BOT_TOKEN` env var
-- **Slack** — set `SLACK_BOT_TOKEN` + `SLACK_APP_TOKEN` env vars
+### WhatsApp
+
+```bash
+nakedclaw connect wa
+```
+
+Walks you through it — enables WhatsApp in config, shows a QR code, you scan it, done. Auth is saved in `.wa-auth/` so you only scan once. Reconnects automatically.
+
+### Telegram
+
+```bash
+nakedclaw connect tg
+```
+
+Prompts for your bot token (get one from [@BotFather](https://t.me/BotFather) — send `/newbot`). Verifies the token, enables Telegram in config, and offers to save the token to `.env`. Then just `nakedclaw restart`.
+
+### Slack
+
+```bash
+nakedclaw connect slack
+```
+
+Prompts for your Bot Token (`xoxb-...`) and App Token (`xapp-...`). To get these:
+1. Create an app at [api.slack.com/apps](https://api.slack.com/apps)
+2. Enable **Socket Mode** (gives you the `xapp-` token)
+3. Add Bot Token Scopes: `chat:write`, `app_mentions:read`, `im:history`, `im:read`, `im:write`
+4. Install to workspace (gives you the `xoxb-` token)
+
+The wizard verifies both tokens, enables Slack in config, and saves to `.env`.
+
+### Access control
+
+Each channel has an `allowFrom` list in `nakedclaw.json5`. Leave it empty to allow everyone, or restrict:
+
+```json5
+"telegram": { "enabled": true, "allowFrom": ["@yourusername"] }
+"whatsapp": { "enabled": true, "allowFrom": ["+1234567890"] }
+```
 
 ## Architecture
 
