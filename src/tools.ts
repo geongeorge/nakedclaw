@@ -5,6 +5,12 @@ import { loadConfig } from "./config.ts";
 import { searchMemory, getChatHistory, listSessions } from "./memory/store.ts";
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
+import { getChannelSender, detectMediaType, getRegisteredChannels } from "./channels/registry.ts";
+
+export type ToolContext = {
+  channel: string;
+  sender: string;
+};
 
 // ── Tool definitions ──────────────────────────────────────────────
 
@@ -71,7 +77,24 @@ export const searchMemoryTool: Tool<typeof SearchMemoryParams> = {
   parameters: SearchMemoryParams,
 };
 
-export const allTools: Tool[] = [shellTool, readFileTool, saveCredentialTool, searchMemoryTool];
+const SendFileParams = Type.Object({
+  filePath: Type.String({ description: "Absolute path to the file to send (e.g. an image the user asked you to create/edit)" }),
+  caption: Type.Optional(
+    Type.String({ description: "Optional caption to accompany the file" })
+  ),
+});
+
+export const sendFileTool: Tool<typeof SendFileParams> = {
+  name: "send_file",
+  description:
+    "Send a file (image, video, audio, document) back to the user through the current channel (WhatsApp, Telegram). " +
+    "Use this after creating, downloading, or processing a file that the user wants sent back. " +
+    "The file is sent to the same user in the same channel as the current conversation. " +
+    "Supports images (.jpg, .png, .gif, .webp), videos (.mp4, .mov), audio (.mp3, .ogg), and documents (any).",
+  parameters: SendFileParams,
+};
+
+export const allTools: Tool[] = [shellTool, readFileTool, saveCredentialTool, searchMemoryTool, sendFileTool];
 
 // ── Tool execution ────────────────────────────────────────────────
 
@@ -188,9 +211,47 @@ function executeSearchMemory(args: Static<typeof SearchMemoryParams>): ToolResul
   return { content: text(output), isError: false };
 }
 
+async function executeSendFile(args: Static<typeof SendFileParams>, context?: ToolContext): Promise<ToolResult> {
+  if (!context) {
+    return { content: text("send_file requires a session context (channel + sender). Cannot send files from headless sessions."), isError: true };
+  }
+
+  const { channel, sender } = context;
+
+  if (channel === "terminal") {
+    return { content: text(`File is at: ${args.filePath} (terminal sessions don't support file attachments)`), isError: false };
+  }
+
+  const channelSender = getChannelSender(channel);
+  if (!channelSender) {
+    const registered = getRegisteredChannels();
+    return {
+      content: text(`No file sender registered for channel "${channel}". Registered channels: ${registered.join(", ") || "none"}`),
+      isError: true,
+    };
+  }
+
+  if (!existsSync(args.filePath)) {
+    return { content: text(`File not found: ${args.filePath}`), isError: true };
+  }
+
+  try {
+    await channelSender.sendFile({
+      recipient: sender,
+      filePath: args.filePath,
+      caption: args.caption,
+    });
+    const mediaType = detectMediaType(args.filePath);
+    return { content: text(`Sent ${mediaType} to ${sender} on ${channel}.`), isError: false };
+  } catch (err: any) {
+    return { content: text(`Error sending file: ${err.message}`), isError: true };
+  }
+}
+
 export async function executeTool(
   name: string,
-  args: Record<string, any>
+  args: Record<string, any>,
+  context?: ToolContext
 ): Promise<ToolResult> {
   console.log(`[agent] Tool call: ${name}(${JSON.stringify(args)})`);
 
@@ -203,6 +264,8 @@ export async function executeTool(
       return executeSaveCredential(args as Static<typeof SaveCredentialParams>);
     case "search_memory":
       return executeSearchMemory(args as Static<typeof SearchMemoryParams>);
+    case "send_file":
+      return executeSendFile(args as Static<typeof SendFileParams>, context);
     default:
       return { content: text(`Unknown tool: ${name}`), isError: true };
   }

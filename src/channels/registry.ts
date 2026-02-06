@@ -1,5 +1,4 @@
-import { existsSync } from "fs";
-import { extname } from "path";
+import { extname } from "node:path";
 
 export type SendFileOptions = {
   recipient: string;

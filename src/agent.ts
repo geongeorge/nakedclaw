@@ -7,7 +7,7 @@ import { rebuildMemoryIndex } from "./memory/store.ts";
 import { getMessages, type SessionMessage } from "./session.ts";
 import type { Attachment } from "./channels/types.ts";
 import { readImageAsBase64 } from "./media.ts";
-import { allTools, executeTool } from "./tools.ts";
+import { allTools, executeTool, type ToolContext } from "./tools.ts";
 
 export type AgentResponse = {
   text: string;
@@ -50,6 +50,12 @@ export async function runAgent(
     options.temperature = 0.7;
   }
 
+  // Extract channel + sender from session key for tool context (e.g. send_file)
+  const colonIdx = sessionKey.indexOf(":");
+  const toolContext: ToolContext | undefined = colonIdx > 0
+    ? { channel: sessionKey.slice(0, colonIdx), sender: sessionKey.slice(colonIdx + 1) }
+    : undefined;
+
   const MAX_TOOL_ITERATIONS = 10;
   const toolCallLog: AgentResponse["toolCalls"] = [];
 
@@ -90,7 +96,7 @@ export async function runAgent(
 
     for (const call of toolCalls) {
       if (call.type !== "toolCall") continue;
-      const result = await executeTool(call.name, call.arguments);
+      const result = await executeTool(call.name, call.arguments, toolContext);
 
       toolCallLog.push({
         name: call.name,
