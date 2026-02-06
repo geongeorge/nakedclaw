@@ -95,6 +95,18 @@ export async function handleMessage(
   try {
     const result = await runAgent(key, agentText, msg.attachments);
 
+    // Log tool calls to chat history
+    if (result.toolCalls && result.toolCalls.length > 0) {
+      const toolLog = result.toolCalls
+        .map((tc) => {
+          const input = typeof tc.input === "string" ? tc.input : JSON.stringify(tc.input);
+          const outputPreview = tc.output.length > 200 ? `${tc.output.slice(0, 200)}...` : tc.output;
+          return `**${tc.name}**(${input})\n> ${outputPreview}`;
+        })
+        .join("\n\n");
+      appendChat(msg.channel, msg.sender, "assistant", `_Tool calls:_\n\n${toolLog}`);
+    }
+
     // Save agent response
     appendMessage(key, {
       role: "assistant",

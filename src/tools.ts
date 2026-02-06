@@ -2,6 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import type { Tool, TextContent } from "@mariozechner/pi-ai";
 import { saveProviderCredential } from "./auth/credentials.ts";
 import { loadConfig } from "./config.ts";
+import { searchMemory, getChatHistory, listSessions } from "./memory/store.ts";
 import { resolve } from "path";
 import { readFileSync, existsSync } from "fs";
 
@@ -53,7 +54,24 @@ export const saveCredentialTool: Tool<typeof SaveCredentialParams> = {
   parameters: SaveCredentialParams,
 };
 
-export const allTools: Tool[] = [shellTool, readFileTool, saveCredentialTool];
+const SearchMemoryParams = Type.Object({
+  query: Type.String({ description: "Search query — matched case-insensitively against all chat history" }),
+  maxResults: Type.Optional(
+    Type.Number({ description: "Max sessions to return (default 5)", minimum: 1, maximum: 20 })
+  ),
+});
+
+export const searchMemoryTool: Tool<typeof SearchMemoryParams> = {
+  name: "search_memory",
+  description:
+    "Search across all past conversations (chat history) for a keyword or phrase. " +
+    "Returns matching lines grouped by session. Use this to recall what a user said, " +
+    "find past decisions, look up shared information, or answer 'did we talk about X?' questions. " +
+    "For full context around a match, follow up with read_file on the chat file path.",
+  parameters: SearchMemoryParams,
+};
+
+export const allTools: Tool[] = [shellTool, readFileTool, saveCredentialTool, searchMemoryTool];
 
 // ── Tool execution ────────────────────────────────────────────────
 
@@ -139,6 +157,37 @@ function executeSaveCredential(args: Static<typeof SaveCredentialParams>): ToolR
   }
 }
 
+function executeSearchMemory(args: Static<typeof SearchMemoryParams>): ToolResult {
+  const maxResults = args.maxResults ?? 5;
+
+  const results = searchMemory(args.query);
+  if (results.length === 0) {
+    return { content: text(`No results for "${args.query}".`), isError: false };
+  }
+
+  const sessions = listSessions();
+  const fileMap = new Map(sessions.map((s) => [s.key, s.file]));
+
+  let output = `Found matches in ${results.length} session(s) for "${args.query}":\n\n`;
+  for (const r of results.slice(0, maxResults)) {
+    const filePath = fileMap.get(r.key) || `memory/chats/${r.key}.md`;
+    output += `── ${r.key} (${filePath})\n`;
+    for (const m of r.matches.slice(0, 5)) {
+      output += `  ${m.trim()}\n`;
+    }
+    if (r.matches.length > 5) {
+      output += `  ... (${r.matches.length - 5} more matches)\n`;
+    }
+    output += "\n";
+  }
+
+  if (output.length > MAX_OUTPUT) {
+    output = output.slice(0, MAX_OUTPUT) + "\n... (truncated)";
+  }
+
+  return { content: text(output), isError: false };
+}
+
 export async function executeTool(
   name: string,
   args: Record<string, any>
@@ -152,6 +201,8 @@ export async function executeTool(
       return executeReadFile(args as Static<typeof ReadFileParams>);
     case "save_credential":
       return executeSaveCredential(args as Static<typeof SaveCredentialParams>);
+    case "search_memory":
+      return executeSearchMemory(args as Static<typeof SearchMemoryParams>);
     default:
       return { content: text(`Unknown tool: ${name}`), isError: true };
   }
