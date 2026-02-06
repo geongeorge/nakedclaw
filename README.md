@@ -8,6 +8,11 @@
 
 NakedClaw is a self-improving AI agent that runs as a background daemon on your machine. Chat with it from your terminal, WhatsApp, Telegram, or Slack — and it can edit its own source code to add features, fix bugs, and grow.
 
+<p align="center">
+  <img src="public/nakedclaw-in-whatsapp.png" width="150" alt="NakedClaw on WhatsApp" /><br/>
+Nakedclaw in Whatsapp
+</p>
+
 ## Why NakedClaw?
 
 [OpenClaw](https://github.com/openclaw/openclaw) is great, but it's wearing a lot of clothes:
@@ -35,7 +40,8 @@ All the good functionality. None of the clothes. Truly naked.
 - **Skills** — NakedClaw reaches its long, naked claw into the [openclaw](https://github.com/openclaw/openclaw) skill catalog and shamelessly steals every single skill. 100% compatible with all openclaw skills — turns out you don't need clothes to be talented
 
 <p align="center">
-  <img src="public/nakedclaw-in-terminal.png" width="700" alt="NakedClaw terminal chat" />
+  <img src="public/nakedclaw-in-terminal.png" width="700" alt="NakedClaw terminal chat" /><br/>
+  Access it via the terminal
 </p>
 
 ## Quick start
@@ -77,15 +83,11 @@ nakedclaw help         show help
 ```
 
 <p align="center">
-  <img src="public/nakedclaw-sessions.png" width="700" alt="NakedClaw session browser" />
+  <img src="public/nakedclaw-sessions.png" width="700" alt="NakedClaw session browser" /><br/>
   Manage and view sessions in terminal
 </p>
 
 ## Channels
-
-<p align="center">
-  <img src="public/nakedclaw-in-whatsapp.png" width="350" alt="NakedClaw on WhatsApp" />
-</p>
 
 **Terminal** is always available — just run `nakedclaw`. For messaging channels, use the connect wizard:
 
