@@ -1,40 +1,40 @@
 {
-  "model": {
-    "provider": "anthropic",
-    "name": "claude-sonnet-4-5-20250929"
+  model: {
+    provider: "anthropic",
+    name: "claude-opus-4-6",
   },
-  "workspace": ".",
-  "channels": {
-    "telegram": {
-      "enabled": false,
-      "allowFrom": []
+  workspace: ".",
+  channels: {
+    telegram: {
+      enabled: true,
+      allowFrom: [],
     },
-    "whatsapp": {
-      "enabled": true,
-      "allowFrom": []
+    whatsapp: {
+      enabled: true,
+      allowFrom: [],
     },
-    "slack": {
-      "enabled": false,
-      "allowFrom": []
-    }
+    slack: {
+      enabled: false,
+      allowFrom: [],
+    },
   },
-  "sessions": {
-    "dir": "./sessions",
-    "maxTurns": 50
+  sessions: {
+    dir: "./sessions",
+    maxTurns: 50,
   },
-  "memory": {
-    "dir": "./memory",
-    "indexFile": "./memory/memory.md"
+  memory: {
+    dir: "./memory",
+    indexFile: "./memory/memory.md",
   },
-  "brain": {
-    "dir": "./brain"
+  brain: {
+    dir: "./brain",
   },
-  "heartbeat": {
-    "enabled": false,
-    "cronExpr": "0 * * * *"
+  heartbeat: {
+    enabled: false,
+    cronExpr: "0 * * * *",
   },
-  "skills": {
-    "dir": "./skills",
-    "autoSync": true
-  }
+  skills: {
+    dir: "./skills",
+    autoSync: true,
+  },
 }

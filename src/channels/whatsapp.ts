@@ -234,7 +234,15 @@ export function createWhatsAppAdapter(
             await currentSock.sendMessage(sender, { text: replyText });
           };
 
-          handler(incoming, reply);
+          try {
+            await handler(incoming, reply);
+          } catch (err) {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            console.error(`[whatsapp] Handler error: ${errMsg}`);
+            try {
+              await currentSock.sendMessage(sender, { text: `Error: ${errMsg}` });
+            } catch {}
+          }
         }
       });
     },

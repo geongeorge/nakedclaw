@@ -42,7 +42,15 @@ export function createSlackAdapter(config: ChannelConfig): ChannelAdapter {
       await say({ text, thread_ts: message.ts });
     };
 
-    handler(incoming, reply);
+    try {
+      await handler(incoming, reply);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[slack] Handler error: ${errMsg}`);
+      try {
+        await say({ text: `Error: ${errMsg}`, thread_ts: message.ts });
+      } catch {}
+    }
   });
 
   return {

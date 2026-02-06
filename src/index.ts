@@ -68,27 +68,40 @@ async function main() {
   startHeartbeat(heartbeatCallback);
 
   // --- Channels ---
+  // Each channel starts independently — one failing won't crash the others
   const activeAdapters: ChannelAdapter[] = [];
 
+  async function startChannel(
+    name: string,
+    create: () => ChannelAdapter
+  ): Promise<void> {
+    try {
+      const adapter = create();
+      adapter.onMessage(handleMessage);
+      await adapter.start();
+      activeAdapters.push(adapter);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[${name}] Failed to start: ${errMsg}`);
+    }
+  }
+
   if (config.channels.telegram.enabled) {
-    const tg = createTelegramAdapter(config.channels.telegram);
-    tg.onMessage(handleMessage);
-    await tg.start();
-    activeAdapters.push(tg);
+    await startChannel("telegram", () =>
+      createTelegramAdapter(config.channels.telegram)
+    );
   }
 
   if (config.channels.whatsapp.enabled) {
-    const wa = createWhatsAppAdapter(config.channels.whatsapp);
-    wa.onMessage(handleMessage);
-    await wa.start();
-    activeAdapters.push(wa);
+    await startChannel("whatsapp", () =>
+      createWhatsAppAdapter(config.channels.whatsapp)
+    );
   }
 
   if (config.channels.slack.enabled) {
-    const sl = createSlackAdapter(config.channels.slack);
-    sl.onMessage(handleMessage);
-    await sl.start();
-    activeAdapters.push(sl);
+    await startChannel("slack", () =>
+      createSlackAdapter(config.channels.slack)
+    );
   }
 
   setActiveChannels(activeAdapters.map((a) => a.name));

@@ -59,11 +59,13 @@ export async function startDaemon(): Promise<void> {
 
   // Resolve the daemon entry point relative to this file
   const daemonEntry = resolve(import.meta.dir, "../index.ts");
+  const projectRoot = resolve(import.meta.dir, "../..");
 
   // Spawn detached daemon via nohup so it survives parent exit
+  // CWD must be project root so Bun loads .env and relative paths resolve
   const proc = Bun.spawn(
     ["sh", "-c", `nohup bun run "${daemonEntry}" >> "${paths.logFile}" 2>&1 &`],
-    { stdio: ["ignore", "ignore", "ignore"] }
+    { cwd: projectRoot, stdio: ["ignore", "ignore", "ignore"] }
   );
 
   // Wait for the daemon to write its PID file

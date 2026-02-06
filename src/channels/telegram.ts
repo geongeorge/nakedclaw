@@ -205,7 +205,15 @@ export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
       }
     };
 
-    handler(msg, reply);
+    try {
+      await handler(msg, reply);
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`[telegram] Handler error: ${errMsg}`);
+      try {
+        await ctx.reply(`Error: ${errMsg}`);
+      } catch {}
+    }
   });
 
   return {
@@ -213,8 +221,16 @@ export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
 
     async start() {
       console.log("[telegram] Starting bot...");
+
+      // Init first to validate token before returning
+      await bot.init();
+      console.log(`[telegram] Bot initialized: @${bot.botInfo.username}`);
+
+      // Start polling in background (resolves when bot stops)
       bot.start({
-        onStart: () => console.log("[telegram] Bot is running"),
+        onStart: () => console.log("[telegram] Polling started"),
+      }).catch((err) => {
+        console.error(`[telegram] Polling error: ${err}`);
       });
     },
 
