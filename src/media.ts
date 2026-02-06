@@ -33,18 +33,36 @@ export function readImageAsBase64(
 }
 
 /**
+ * Resolve an OpenAI-compatible API key for Whisper.
+ * Priority: OPENAI_API_KEY env → "whisper" credential → "openai" credential.
+ */
+function getWhisperApiKey(): string | null {
+  const envKey = process.env.OPENAI_API_KEY?.trim();
+  if (envKey) return envKey;
+
+  const store = loadAllCredentials();
+
+  const whisperCred = store["whisper"];
+  if (whisperCred?.method === "api_key") return whisperCred.apiKey;
+
+  const openaiCred = store["openai"];
+  if (openaiCred?.method === "api_key") return openaiCred.apiKey;
+
+  return null;
+}
+
+/**
  * Transcribe an audio file using OpenAI's Whisper API.
  * Returns transcription text, or null if no API key or on failure.
  */
 export async function transcribeAudio(
   filePath: string
 ): Promise<string | null> {
-  const store = loadAllCredentials();
-  const whisperCred = store["whisper"];
+  const apiKey = getWhisperApiKey();
 
-  if (!whisperCred || whisperCred.method !== "api_key") {
+  if (!apiKey) {
     console.log(
-      "[whisper] No API key configured, skipping. Run: nakedclaw setup"
+      "[whisper] No API key found (checked OPENAI_API_KEY, whisper, openai credentials). Run: nakedclaw setup"
     );
     return null;
   }
@@ -67,7 +85,7 @@ export async function transcribeAudio(
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${whisperCred.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: formData,
       }

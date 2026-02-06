@@ -61,6 +61,13 @@ export async function runAgent(
     );
 
     if (res.errorMessage) {
+      if (res.errorMessage.includes("only authorized for use with Claude Code")) {
+        throw new Error(
+          "Your OAuth token is restricted to Claude Code and can't be used for external API calls.\n" +
+          "Fix: set ANTHROPIC_API_KEY or run `nakedclaw setup` and choose API key auth.\n" +
+          "Get a key at https://console.anthropic.com/settings/keys"
+        );
+      }
       throw new Error(res.errorMessage);
     }
 

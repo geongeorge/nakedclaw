@@ -22,7 +22,7 @@ const ReadFileParams = Type.Object({
 });
 
 const SaveCredentialParams = Type.Object({
-  provider: Type.String({ description: "Provider name, e.g. 'openai', 'whisper', 'anthropic'" }),
+  provider: Type.String({ description: "Provider name, e.g. 'whisper', 'anthropic', 'deepgram'" }),
   apiKey: Type.String({ description: "The API key to save" }),
 });
 
@@ -46,7 +46,10 @@ export const saveCredentialTool: Tool<typeof SaveCredentialParams> = {
   name: "save_credential",
   description:
     "Save an API key to ~/.nakedclaw/credentials.json for a given provider. " +
-    "Use when the user provides an API key they want stored.",
+    "Use when the user provides an API key they want stored. " +
+    "IMPORTANT: For OpenAI keys (for Whisper/transcription), always use provider 'whisper' — " +
+    "never use 'openai' (that's reserved for the chat model's OAuth credentials). " +
+    "Keys take effect immediately — no daemon restart needed.",
   parameters: SaveCredentialParams,
 };
 
@@ -121,8 +124,16 @@ function executeReadFile(args: Static<typeof ReadFileParams>): ToolResult {
 
 function executeSaveCredential(args: Static<typeof SaveCredentialParams>): ToolResult {
   try {
-    saveProviderCredential(args.provider, { method: "api_key", apiKey: args.apiKey });
-    return { content: text(`Saved API key for provider "${args.provider}".`), isError: false };
+    // Never overwrite "openai" — that's the chat model's OAuth credential.
+    // Remap OpenAI API keys to "whisper" (used for transcription).
+    let provider = args.provider;
+    if (provider === "openai" && args.apiKey.startsWith("sk-")) {
+      provider = "whisper";
+      console.log('[agent] Remapped provider "openai" → "whisper" to protect chat credentials');
+    }
+
+    saveProviderCredential(provider, { method: "api_key", apiKey: args.apiKey });
+    return { content: text(`Saved API key for provider "${provider}". Takes effect immediately.`), isError: false };
   } catch (err: any) {
     return { content: text(`Error saving credential: ${err.message}`), isError: true };
   }

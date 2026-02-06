@@ -45,9 +45,7 @@ export async function handleMessage(
     for (const att of msg.attachments) {
       if (att.type === "audio" || att.type === "voice") {
         const transcription = await transcribeAudio(att.filePath);
-        if (transcription) {
-          att._transcription = transcription;
-        }
+        att._transcription = transcription ?? "(transcription unavailable — no Whisper API key configured)";
       }
     }
   }

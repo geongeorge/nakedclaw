@@ -5,7 +5,6 @@ import {
   removeProviderCredential,
   type CredentialsStore,
 } from "../auth/credentials.ts";
-import { ANTHROPIC_OAUTH } from "../auth/oauth.ts";
 import { loginOpenAICodex } from "@mariozechner/pi-ai";
 import { createInterface } from "readline";
 
@@ -59,7 +58,8 @@ function showSavedCredentials(store: CredentialsStore): void {
 
 async function addAnthropicSetupToken(): Promise<void> {
   console.log(
-    `\n${YELLOW}Run ${BOLD}claude setup-token${RESET}${YELLOW} in another terminal, then paste the token here.${RESET}\n`
+    `\n${YELLOW}Run ${BOLD}claude setup-token${RESET}${YELLOW} in another terminal, then paste the token here.${RESET}\n` +
+    `${DIM}The token starts with sk-ant-oat01-${RESET}\n`
   );
   const token = await prompt("Setup token: ");
   if (!token) {
@@ -67,42 +67,14 @@ async function addAnthropicSetupToken(): Promise<void> {
     return;
   }
 
-  try {
-    const parsed = JSON.parse(token);
-    saveProviderCredential("anthropic", {
-      method: "oauth",
-      oauth: {
-        accessToken: parsed.accessToken || parsed.access_token,
-        refreshToken: parsed.refreshToken || parsed.refresh_token,
-        expiresAt:
-          parsed.expiresAt ||
-          (parsed.expires_in
-            ? Date.now() + parsed.expires_in * 1000
-            : Date.now() + 8 * 60 * 60 * 1000),
-        clientId: ANTHROPIC_OAUTH.clientId,
-        tokenUrl: ANTHROPIC_OAUTH.tokenUrl,
-      },
-    });
-    console.log(`${GREEN}Anthropic OAuth credentials saved.${RESET}`);
-  } catch {
-    if (token.startsWith("sk-ant-oat")) {
-      saveProviderCredential("anthropic", {
-        method: "oauth",
-        oauth: {
-          accessToken: token,
-          refreshToken: "",
-          expiresAt: Date.now() + 8 * 60 * 60 * 1000,
-          clientId: ANTHROPIC_OAUTH.clientId,
-          tokenUrl: ANTHROPIC_OAUTH.tokenUrl,
-        },
-      });
-      console.log(
-        `${GREEN}Access token saved.${RESET} ${DIM}(no refresh token — re-run setup when it expires)${RESET}`
-      );
-    } else {
-      console.log("Unrecognized token format.");
-    }
+  if (!token.startsWith("sk-ant-oat")) {
+    console.log(`${RED}Expected a token starting with sk-ant-oat01-${RESET}`);
+    console.log(`${DIM}Run "claude setup-token" in another terminal to generate one.${RESET}`);
+    return;
   }
+
+  saveProviderCredential("anthropic", { method: "api_key", apiKey: token });
+  console.log(`${GREEN}Anthropic setup token saved.${RESET}`);
 }
 
 async function addAnthropicApiKey(): Promise<void> {
