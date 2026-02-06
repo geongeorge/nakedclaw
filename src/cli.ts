@@ -62,6 +62,11 @@ switch (subcommand || "chat") {
     break;
   }
 
+  case "sessions": {
+    await import("./cli/sessions.ts");
+    break;
+  }
+
   case "skills": {
     const { handleSkillsCli } = await import("./cli/skills.ts");
     await handleSkillsCli(process.argv.slice(3));
@@ -83,6 +88,7 @@ Commands:
   restart       Restart the daemon
   status        Show daemon status
   logs          Show daemon logs
+  sessions      Interactive session browser (TUI)
   skills        List, sync, or install skills
   help          Show this help
 `);
