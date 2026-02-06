@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/nakedclaw.svg" width="80" alt="NakedClaw logo" />
+</p>
+
 # NakedClaw
 
 **Your own personal AI assistant. AI that rewrites itself.**
