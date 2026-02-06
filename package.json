@@ -15,7 +15,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^25.2.1"
+    "@types/node": "^25.2.1",
+    "@types/qrcode-terminal": "^0.12.2"
   },
   "peerDependencies": {
     "typescript": "^5"
@@ -26,6 +27,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "croner": "^10.0.1",
     "grammy": "^1.39.3",
-    "json5": "^2.2.3"
+    "json5": "^2.2.3",
+    "qrcode-terminal": "^0.12.0"
   }
 }

@@ -4,10 +4,14 @@ import makeWASocket, {
   type WASocket,
 } from "@whiskeysockets/baileys";
 import { resolve } from "path";
+import qrcode from "qrcode-terminal";
 import type { ChannelAdapter, IncomingMessage, ReplyFn } from "./types.ts";
 import type { ChannelConfig } from "../config.ts";
 
-export function createWhatsAppAdapter(config: ChannelConfig): ChannelAdapter {
+export function createWhatsAppAdapter(
+  config: ChannelConfig,
+  onConnected?: () => void
+): ChannelAdapter {
   let sock: WASocket | null = null;
   let handler: ((msg: IncomingMessage, reply: ReplyFn) => void) | null = null;
   const authDir = resolve(import.meta.dir, "../../.wa-auth");
@@ -21,13 +25,21 @@ export function createWhatsAppAdapter(config: ChannelConfig): ChannelAdapter {
 
       sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true,
+        browser: ["NakedClaw", "Chrome", "1.0.0"],
       });
 
       sock.ev.on("creds.update", saveCreds);
 
       sock.ev.on("connection.update", (update) => {
-        const { connection, lastDisconnect } = update;
+        const { connection, lastDisconnect, qr } = update;
+
+        // Display QR code when received
+        if (qr) {
+          console.log("\n[whatsapp] Scan this QR code with WhatsApp:\n");
+          qrcode.generate(qr, { small: true });
+          console.log();
+        }
+
         if (connection === "close") {
           const statusCode = (lastDisconnect?.error as any)?.output
             ?.statusCode;
@@ -39,6 +51,7 @@ export function createWhatsAppAdapter(config: ChannelConfig): ChannelAdapter {
           }
         } else if (connection === "open") {
           console.log("[whatsapp] Connected");
+          onConnected?.();
         }
       });
 

@@ -6,6 +6,7 @@
  * Usage:
  *   nakedclaw              — chat with the agent (default)
  *   nakedclaw setup        — configure credentials
+ *   nakedclaw connect <ch> — connect a channel (whatsapp, telegram, slack)
  *   nakedclaw start        — start daemon in background
  *   nakedclaw stop         — stop daemon
  *   nakedclaw restart      — restart daemon
@@ -23,6 +24,11 @@ switch (subcommand || "chat") {
 
   case "setup": {
     await import("./cli/setup.ts");
+    break;
+  }
+
+  case "connect": {
+    await import("./cli/connect.ts");
     break;
   }
 
@@ -63,14 +69,15 @@ switch (subcommand || "chat") {
 Usage: nakedclaw [command]
 
 Commands:
-  (none)     Chat with the agent (connects to daemon)
-  setup      Configure credentials (OAuth or API key)
-  start      Start the daemon in background
-  stop       Stop the daemon
-  restart    Restart the daemon
-  status     Show daemon status
-  logs       Show daemon logs
-  help       Show this help
+  (none)        Chat with the agent (connects to daemon)
+  setup         Configure credentials (OAuth or API key)
+  connect <ch>  Connect a channel (whatsapp/wa, telegram/tg, slack)
+  start         Start the daemon in background
+  stop          Stop the daemon
+  restart       Restart the daemon
+  status        Show daemon status
+  logs          Show daemon logs
+  help          Show this help
 `);
     break;
   }
