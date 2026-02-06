@@ -36,6 +36,10 @@ nakedclaw stop         stop the daemon
 nakedclaw restart      restart the daemon
 nakedclaw status       show daemon status
 nakedclaw logs         tail daemon logs
+nakedclaw skills       list skills with eligibility
+nakedclaw skills sync  fetch skill catalog from GitHub
+nakedclaw skills install <name>  install a skill's deps
+nakedclaw skills info <name>     show skill details
 nakedclaw help         show help
 ```
 
@@ -55,6 +59,7 @@ Enable channels in `nakedclaw.json5`:
 - **Scheduler** — natural language scheduling ("remind me at 10", "every day at 9am")
 - **Multiple terminals** — open as many `nakedclaw` sessions as you want
 - **Config hot-reload** — edit `nakedclaw.json5` and heartbeat/scheduler update automatically
+- **Skills** — NakedClaw reaches its long, naked claw into the [openclaw](https://github.com/openclaw/openclaw) skill catalog and shamelessly steals every single skill. 100% compatible with all openclaw skills — turns out you don't need clothes to be talented
 
 ## Architecture
 
@@ -66,6 +71,7 @@ Enable channels in `nakedclaw.json5`:
   logs/daemon.log       daemon logs
 
 nakedclaw.json5         project config
+skills/                 stolen openclaw skills (cached locally)
 sessions/               JSONL transcripts per sender
 memory/                 markdown chat history + memory.md index
 ```

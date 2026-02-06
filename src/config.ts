@@ -26,10 +26,16 @@ export type Config = {
     dir: string;
     indexFile: string;
   };
+  brain: {
+    dir: string;
+  };
   heartbeat: {
     enabled: boolean;
     cronExpr: string;
-    prompt: string;
+  };
+  skills?: {
+    dir: string;
+    autoSync: boolean;
   };
 };
 

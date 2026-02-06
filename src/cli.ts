@@ -62,6 +62,12 @@ switch (subcommand || "chat") {
     break;
   }
 
+  case "skills": {
+    const { handleSkillsCli } = await import("./cli/skills.ts");
+    await handleSkillsCli(process.argv.slice(3));
+    break;
+  }
+
   case "help":
   case "--help":
   case "-h": {
@@ -77,6 +83,7 @@ Commands:
   restart       Restart the daemon
   status        Show daemon status
   logs          Show daemon logs
+  skills        List, sync, or install skills
   help          Show this help
 `);
     break;

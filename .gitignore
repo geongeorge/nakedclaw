@@ -39,3 +39,6 @@ memory/
 
 # channel auth state
 .wa-auth/
+
+# cached skill files
+skills/

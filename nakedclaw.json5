@@ -26,9 +26,15 @@
     "dir": "./memory",
     "indexFile": "./memory/memory.md"
   },
+  "brain": {
+    "dir": "./brain"
+  },
   "heartbeat": {
     "enabled": false,
-    "cronExpr": "0 * * * *",
-    "prompt": "Check for pending tasks, review memory, and report status."
+    "cronExpr": "0 * * * *"
+  },
+  "skills": {
+    "dir": "./skills",
+    "autoSync": true
   }
 }

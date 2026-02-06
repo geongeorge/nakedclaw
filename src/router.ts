@@ -15,6 +15,9 @@ import {
   parseTimeToJob,
 } from "./scheduler/scheduler.ts";
 import { getHeartbeatStatus } from "./scheduler/heartbeat.ts";
+import { syncCatalog } from "./skills/catalog.ts";
+import { installSkillByName } from "./skills/installer.ts";
+import { getAllSkillStatuses } from "./skills/loader.ts";
 
 /**
  * Message router: incoming message → command check → agent → reply.
@@ -185,6 +188,39 @@ async function handleCommand(
           `Cron: ${hb.cronExpr}\n` +
           `Next: ${hb.nextRun || "n/a"}`
       );
+      return true;
+    }
+
+    case "/skills": {
+      if (arg === "sync") {
+        try {
+          await syncCatalog();
+          await reply("Skills catalog synced.");
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          await reply(`Sync failed: ${errMsg}`);
+        }
+      } else if (arg.startsWith("install ")) {
+        const name = arg.slice(8).trim();
+        const result = await installSkillByName(name);
+        await reply(result.message);
+      } else {
+        const statuses = await getAllSkillStatuses();
+        if (statuses.length === 0) {
+          await reply('No skills cached. Use "/skills sync" to fetch.');
+        } else {
+          const eligible = statuses.filter((s) => s.eligible).length;
+          let out = `Skills (${eligible}/${statuses.length} ready)\n\n`;
+          for (const s of statuses) {
+            const icon = s.eligible ? "\u2713" : "\u2717";
+            out += `${icon} ${s.emoji || ""} ${s.name} \u2014 ${s.description}\n`;
+            if (!s.eligible && s.missing.bins.length) {
+              out += `  missing: ${s.missing.bins.join(", ")}\n`;
+            }
+          }
+          await reply(out);
+        }
+      }
       return true;
     }
 

@@ -1,9 +1,10 @@
-import { resolve } from "path";
 import { completeSimple, getModel, type Message } from "@mariozechner/pi-ai";
-import { loadConfig } from "./config.ts";
-import { getMessages, type SessionMessage } from "./session.ts";
-import { rebuildMemoryIndex } from "./memory/store.ts";
 import { loadCredentials } from "./auth/credentials.ts";
+import { loadChannels, loadPersistentMemory, loadSystemPrompt } from "./brain/loader.ts";
+import { loadSkillsPrompt } from "./skills/loader.ts";
+import { loadConfig } from "./config.ts";
+import { rebuildMemoryIndex } from "./memory/store.ts";
+import { getMessages, type SessionMessage } from "./session.ts";
 
 export type AgentResponse = {
   text: string;
@@ -36,7 +37,7 @@ export async function runAgent(
   const history = getMessages(sessionKey);
 
   // Build messages for the API
-  const systemPrompt = buildSystemPrompt(config.workspace, memoryContext);
+  const systemPrompt = await buildSystemPrompt(config.workspace, memoryContext);
   const messages = historyToApiMessages(history, userMessage);
 
   // Resolve the model through pi-ai
@@ -68,31 +69,31 @@ export async function runAgent(
   return { text };
 }
 
-function buildSystemPrompt(workspace: string, memoryContext: string): string {
-  const ws = resolve(workspace);
-  return `You are NakedClaw, a self-improving AI agent. Your workspace is your own source code at: ${ws}
+async function buildSystemPrompt(workspace: string, memoryContext: string): Promise<string> {
+  const [system, channels, memory, skills] = await Promise.all([
+    loadSystemPrompt(workspace),
+    loadChannels(),
+    loadPersistentMemory(),
+    loadSkillsPrompt(),
+  ]);
 
-You are a coding agent that can be reached via Telegram, WhatsApp, and Slack. When users ask you to add features, fix bugs, or improve yourself — you edit your own source files.
+  const parts = [system];
 
-## Memory
-Here is your current memory index with recent conversation summaries:
+  if (channels) {
+    parts.push(channels);
+  }
 
-${memoryContext}
+  if (skills) {
+    parts.push(skills);
+  }
 
-## Commands
-Users can send these special commands:
-- /reset — clear the current session
-- /status — show system status
-- /memory — show memory index
-- /search <query> — search all chat history
-- /schedule <time> <message> — schedule a reminder
-- /heartbeat — show heartbeat status
+  if (memory) {
+    parts.push(`## Persistent Memory\n\n${memory}`);
+  }
 
-## Guidelines
-- Be concise in responses (messaging channels have length limits)
-- When editing code, explain what you changed
-- After code changes, remind the user to restart for changes to take effect
-- Use your memory to maintain context across conversations`;
+  parts.push(`## Chat Index\n\nRecent conversation summaries:\n\n${memoryContext}`);
+
+  return parts.join("\n\n");
 }
 
 function historyToApiMessages(

@@ -1,4 +1,5 @@
 import { Cron } from "croner";
+import { loadHeartbeatPrompt } from "../brain/loader.ts";
 import { loadConfig } from "../config.ts";
 
 /**
@@ -9,7 +10,7 @@ import { loadConfig } from "../config.ts";
  * The agent can then check its memory, run pending tasks, etc.
  */
 
-type HeartbeatCallback = (prompt: string) => void;
+type HeartbeatCallback = (prompt: string) => void | Promise<void>;
 
 let cronJob: Cron | null = null;
 let isRunning = false;
@@ -25,7 +26,7 @@ export function startHeartbeat(onBeat: HeartbeatCallback): void {
     cronJob.stop();
   }
 
-  cronJob = new Cron(config.heartbeat.cronExpr, () => {
+  cronJob = new Cron(config.heartbeat.cronExpr, async () => {
     if (isRunning) {
       console.log("[heartbeat] Skipping — previous beat still running");
       return;
@@ -35,7 +36,8 @@ export function startHeartbeat(onBeat: HeartbeatCallback): void {
     console.log(`[heartbeat] Beat at ${new Date().toISOString()}`);
 
     try {
-      onBeat(config.heartbeat.prompt);
+      const prompt = await loadHeartbeatPrompt();
+      await onBeat(prompt);
     } finally {
       isRunning = false;
     }
