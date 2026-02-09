@@ -93,7 +93,7 @@ export async function handleMessage(
 
   // Run agent
   try {
-    const result = await runAgent(key, agentText, msg.attachments);
+    const result = await runAgent(key, agentText, msg.attachments, reply);
 
     // Log tool calls to chat history
     if (result.toolCalls && result.toolCalls.length > 0) {

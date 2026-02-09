@@ -10,6 +10,7 @@ import { getChannelSender, detectMediaType, getRegisteredChannels } from "./chan
 export type ToolContext = {
   channel: string;
   sender: string;
+  reply?: (text: string) => Promise<void>;
 };
 
 // ── Tool definitions ──────────────────────────────────────────────
@@ -100,6 +101,22 @@ const SendFileParams = Type.Object({
   ),
 });
 
+const SendMessageParams = Type.Object({
+  text: Type.String({
+    description:
+      "Text to send as an immediate standalone message to the current user/channel"
+  }),
+});
+
+export const sendMessageTool: Tool<typeof SendMessageParams> = {
+  name: "send_message",
+  description:
+    "Send an immediate standalone text message to the current user/channel. " +
+    "Use when the user explicitly asks for multiple separate messages (e.g. countdowns, step-by-step pings). " +
+    "Can be called multiple times in a loop.",
+  parameters: SendMessageParams,
+};
+
 export const sendFileTool: Tool<typeof SendFileParams> = {
   name: "send_file",
   description:
@@ -110,7 +127,15 @@ export const sendFileTool: Tool<typeof SendFileParams> = {
   parameters: SendFileParams,
 };
 
-export const allTools: Tool[] = [shellTool, readFileTool, saveCredentialTool, searchMemoryTool, rememberTool, sendFileTool];
+export const allTools: Tool[] = [
+  shellTool,
+  readFileTool,
+  saveCredentialTool,
+  searchMemoryTool,
+  rememberTool,
+  sendMessageTool,
+  sendFileTool,
+];
 
 // ── Tool execution ────────────────────────────────────────────────
 
@@ -275,6 +300,27 @@ function executeSearchMemory(args: Static<typeof SearchMemoryParams>): ToolResul
   return { content: text(output), isError: false };
 }
 
+async function executeSendMessage(args: Static<typeof SendMessageParams>, context?: ToolContext): Promise<ToolResult> {
+  if (!context?.reply) {
+    return {
+      content: text("send_message requires an active reply context and cannot be used in headless sessions."),
+      isError: true,
+    };
+  }
+
+  const msg = args.text.trim();
+  if (!msg) {
+    return { content: text("send_message text cannot be empty."), isError: true };
+  }
+
+  try {
+    await context.reply(msg);
+    return { content: text(`Sent message to ${context.channel}:${context.sender}`), isError: false };
+  } catch (err: any) {
+    return { content: text(`Error sending message: ${err.message}`), isError: true };
+  }
+}
+
 async function executeSendFile(args: Static<typeof SendFileParams>, context?: ToolContext): Promise<ToolResult> {
   if (!context) {
     return { content: text("send_file requires a session context (channel + sender). Cannot send files from headless sessions."), isError: true };
@@ -330,6 +376,8 @@ export async function executeTool(
       return executeSearchMemory(args as Static<typeof SearchMemoryParams>);
     case "remember":
       return executeRemember(args as Static<typeof RememberParams>);
+    case "send_message":
+      return executeSendMessage(args as Static<typeof SendMessageParams>, context);
     case "send_file":
       return executeSendFile(args as Static<typeof SendFileParams>, context);
     default:
