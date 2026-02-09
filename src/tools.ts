@@ -3,8 +3,8 @@ import type { Tool, TextContent } from "@mariozechner/pi-ai";
 import { saveProviderCredential } from "./auth/credentials.ts";
 import { loadConfig } from "./config.ts";
 import { searchMemory, getChatHistory, listSessions } from "./memory/store.ts";
-import { resolve } from "path";
-import { readFileSync, existsSync } from "fs";
+import { resolve, dirname } from "path";
+import { readFileSync, existsSync, appendFileSync, mkdirSync, writeFileSync } from "fs";
 import { getChannelSender, detectMediaType, getRegisteredChannels } from "./channels/registry.ts";
 
 export type ToolContext = {
@@ -77,6 +77,22 @@ export const searchMemoryTool: Tool<typeof SearchMemoryParams> = {
   parameters: SearchMemoryParams,
 };
 
+const RememberParams = Type.Object({
+  note: Type.String({
+    description:
+      "A concise durable fact to store in persistent memory (e.g. user preference, identity detail, stable project rule)"
+  }),
+});
+
+export const rememberTool: Tool<typeof RememberParams> = {
+  name: "remember",
+  description:
+    "Save a durable fact to persistent memory at brain/permanent-memory.md. " +
+    "Use this for user preferences, stable personal details, project constraints, and long-term decisions. " +
+    "Do not use for one-off transient details.",
+  parameters: RememberParams,
+};
+
 const SendFileParams = Type.Object({
   filePath: Type.String({ description: "Absolute path to the file to send (e.g. an image the user asked you to create/edit)" }),
   caption: Type.Optional(
@@ -94,7 +110,7 @@ export const sendFileTool: Tool<typeof SendFileParams> = {
   parameters: SendFileParams,
 };
 
-export const allTools: Tool[] = [shellTool, readFileTool, saveCredentialTool, searchMemoryTool, sendFileTool];
+export const allTools: Tool[] = [shellTool, readFileTool, saveCredentialTool, searchMemoryTool, rememberTool, sendFileTool];
 
 // ── Tool execution ────────────────────────────────────────────────
 
@@ -160,6 +176,54 @@ function executeReadFile(args: Static<typeof ReadFileParams>): ToolResult {
     return { content: text(output + suffix), isError: false };
   } catch (err: any) {
     return { content: text(`Error reading file: ${err.message}`), isError: true };
+  }
+}
+
+function getPersistentMemoryPath(): string {
+  const config = loadConfig();
+  return resolve(config.brain.dir, "permanent-memory.md");
+}
+
+function executeRemember(args: Static<typeof RememberParams>): ToolResult {
+  const note = args.note.trim().replace(/\s+/g, " ");
+  if (!note) {
+    return { content: text("Nothing to remember: note is empty."), isError: true };
+  }
+
+  const path = getPersistentMemoryPath();
+  const dir = dirname(path);
+
+  try {
+    mkdirSync(dir, { recursive: true });
+
+    if (!existsSync(path)) {
+      const header =
+        "# Persistent Memory\n\n" +
+        "<!-- Auto-updated by NakedClaw. You can also edit this file manually. -->\n\n" +
+        "## Learned Facts\n\n";
+      writeFileSync(path, header, "utf-8");
+    }
+
+    const existing = readFileSync(path, "utf-8");
+    const normalizedExisting = existing.toLowerCase();
+    const normalizedNote = note.toLowerCase();
+    if (normalizedExisting.includes(normalizedNote)) {
+      return {
+        content: text(`Already remembered (duplicate skipped): "${note}"`),
+        isError: false,
+      };
+    }
+
+    const entry = `- [${new Date().toISOString()}] ${note}\n`;
+    const spacer = existing.endsWith("\n") ? "" : "\n";
+    appendFileSync(path, spacer + entry, "utf-8");
+
+    return {
+      content: text(`Remembered: "${note}" (${path})`),
+      isError: false,
+    };
+  } catch (err: any) {
+    return { content: text(`Error saving memory: ${err.message}`), isError: true };
   }
 }
 
@@ -264,6 +328,8 @@ export async function executeTool(
       return executeSaveCredential(args as Static<typeof SaveCredentialParams>);
     case "search_memory":
       return executeSearchMemory(args as Static<typeof SearchMemoryParams>);
+    case "remember":
+      return executeRemember(args as Static<typeof RememberParams>);
     case "send_file":
       return executeSendFile(args as Static<typeof SendFileParams>, context);
     default:

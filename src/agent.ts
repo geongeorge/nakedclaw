@@ -140,10 +140,10 @@ async function buildSystemPrompt(workspace: string, memoryContext: string): Prom
   }
 
   if (memory) {
-    parts.push(`## Persistent Memory\n\n${memory}`);
+    parts.push(`## Permanent Memory\n\n${memory}`);
   }
 
-  parts.push(`## Chat Index\n\nRecent conversation summaries:\n\n${memoryContext}`);
+  parts.push(`## Temporary Memory Index\n\nRecent conversation summaries:\n\n${memoryContext}`);
 
   return parts.join("\n\n");
 }

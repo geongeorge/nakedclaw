@@ -31,7 +31,7 @@ nakedclaw/
 │   │   ├── whatsapp.ts       # Baileys
 │   │   └── slack.ts          # Bolt
 │   ├── memory/
-│   │   └── store.ts          # MD-based chat storage + search + memory.md index
+│   │   └── store.ts          # MD-based chat storage + search + temporary-memory.md index
 │   ├── skills/
 │   │   ├── types.ts          # SkillEntry, SkillMetadata, SkillStatus types
 │   │   ├── frontmatter.ts    # SKILL.md parser (YAML frontmatter + JSON5 metadata)
@@ -46,14 +46,14 @@ nakedclaw/
 │       └── viewer.ts         # Legacy session viewer
 ├── brain/                    # Human-editable agent personality & knowledge
 │   ├── system.md             # Identity, personality, guidelines, commands
-│   ├── memory.md             # Persistent knowledge (user-curated facts/notes)
+│   ├── permanent-memory.md   # Persistent knowledge (user-curated facts/notes)
 │   ├── heartbeat.md          # Instructions for heartbeat cron
 │   └── channels.md           # Per-channel behavior rules
 ├── nakedclaw.json5           # Config (workspace dir)
 ├── skills/                   # Cached skill files from openclaw (gitignored)
 │   ├── catalog.json          # Skill index
 │   └── <name>/SKILL.md       # Downloaded skill definitions
-├── memory/                   # Chat markdown files + memory.md index
+├── memory/                   # Chat markdown files + temporary-memory.md index
 ├── sessions/                 # JSONL transcripts
 └── package.json
 ```

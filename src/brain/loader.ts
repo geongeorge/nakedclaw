@@ -19,6 +19,9 @@ export async function loadSystemPrompt(workspace: string): Promise<string> {
 }
 
 export async function loadPersistentMemory(): Promise<string> {
+  // Preferred durable-memory file name. Fallback keeps legacy installs working.
+  const permanent = await readBrainFile("permanent-memory.md");
+  if (permanent) return permanent;
   return readBrainFile("memory.md");
 }
 

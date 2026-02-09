@@ -12,11 +12,11 @@ export type MemoryEntry = {
 
 /**
  * Memory system: all chats saved as markdown files, one per session.
- * A master memory.md index is regenerated and loaded with every agent call.
+ * A master temporary-memory.md index is regenerated and loaded with every agent call.
  *
  * Structure:
  *   memory/
- *     memory.md          ← master index, loaded into agent context
+ *     temporary-memory.md  ← master index, loaded into agent context
  *     chats/
  *       telegram-@user.md
  *       whatsapp-1234567890.md
@@ -139,13 +139,13 @@ export function searchMemory(query: string): Array<{
   return results;
 }
 
-/** Rebuild the master memory.md index file */
+/** Rebuild the master temporary-memory.md index file */
 export function rebuildMemoryIndex(): string {
   ensureMemoryDirs();
   const sessions = listSessions();
   const indexPath = getIndexPath();
 
-  let md = `# NakedClaw Memory Index\n\n`;
+  let md = `# NakedClaw Temporary Memory Index\n\n`;
   md += `> Auto-generated. Last updated: ${new Date().toISOString()}\n\n`;
   md += `## Active Sessions (${sessions.length})\n\n`;
 

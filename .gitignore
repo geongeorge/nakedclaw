@@ -38,6 +38,7 @@ sessions/*
 !sessions/.gitkeep
 memory/*
 !memory/.gitkeep
+brain/permanent-memory.md
 
 # channel auth state
 .wa-auth/

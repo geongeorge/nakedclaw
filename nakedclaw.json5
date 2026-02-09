@@ -24,7 +24,7 @@
   },
   memory: {
     dir: './memory',
-    indexFile: './memory/memory.md',
+    indexFile: './memory/temporary-memory.md',
   },
   brain: {
     dir: './brain',

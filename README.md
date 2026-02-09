@@ -32,7 +32,7 @@ All the good functionality. None of the clothes. Truly naked.
 
 ## Features
 
-- **Memory** — all chats saved as markdown in `memory/`, searchable, with `memory.md` loaded every session
+- **Memory** — chat history is saved in `memory/chats/*.md` and indexed in `memory/temporary-memory.md`; persistent user/project facts live in `brain/permanent-memory.md` and are loaded every session
 - **Heartbeat** — configurable cron that triggers the agent periodically
 - **Scheduler** — natural language scheduling ("remind me at 10", "every day at 9am")
 - **Multiple terminals** — open as many `nakedclaw` sessions as you want
@@ -149,7 +149,7 @@ Each channel has an `allowFrom` list in `nakedclaw.json5`. Leave it empty to all
 nakedclaw.json5         project config
 skills/                 stolen openclaw skills (cached locally)
 sessions/               JSONL transcripts per sender
-memory/                 markdown chat history + memory.md index
+memory/                 markdown chat history + temporary-memory.md index
 ```
 
 Daemon runs in background. CLI clients connect via Unix socket using NDJSON protocol. Multiple terminals supported simultaneously.
