@@ -6,8 +6,14 @@ export type SendFileOptions = {
   caption?: string;
 };
 
+export type SendTextOptions = {
+  recipient: string;
+  text: string;
+};
+
 export type ChannelSender = {
   sendFile(opts: SendFileOptions): Promise<void>;
+  sendText?(opts: SendTextOptions): Promise<void>;
 };
 
 const registry = new Map<string, ChannelSender>();

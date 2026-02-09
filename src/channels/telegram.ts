@@ -235,6 +235,22 @@ export function createTelegramAdapter(config: ChannelConfig): ChannelAdapter {
 
       // Register file sender so agent can send images/files back
       registerChannelSender("telegram", {
+        async sendText({ recipient, text }) {
+          let chatId: number;
+          if (chatIdMap.has(recipient)) {
+            chatId = chatIdMap.get(recipient)!;
+          } else {
+            const parsed = parseInt(recipient, 10);
+            if (isNaN(parsed)) throw new Error(`Unknown Telegram recipient: ${recipient}`);
+            chatId = parsed;
+          }
+
+          const chunks = splitMessage(text, 4096);
+          for (const chunk of chunks) {
+            await bot.api.sendMessage(chatId, chunk);
+          }
+        },
+
         async sendFile({ recipient, filePath, caption }) {
           // Resolve numeric chat ID from sender string
           let chatId: number;

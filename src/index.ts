@@ -14,8 +14,8 @@ import {
 } from "./scheduler/scheduler.ts";
 import { startHeartbeat, stopHeartbeat } from "./scheduler/heartbeat.ts";
 import { runAgent } from "./agent.ts";
-import { sessionKeyFromMessage } from "./session.ts";
-import { startDaemonServer, setActiveChannels } from "./daemon/server.ts";
+import { startDaemonServer, setActiveChannels, sendToTerminalSession } from "./daemon/server.ts";
+import { getChannelSender } from "./channels/registry.ts";
 import { getStateDir, ensureStateDir } from "./auth/credentials.ts";
 import { PID_FILENAME } from "./daemon/protocol.ts";
 
@@ -45,12 +45,29 @@ async function main() {
   initScheduler();
 
   setJobCallback(async (job) => {
-    const key = sessionKeyFromMessage(job.channel, job.sender);
     try {
-      const result = await runAgent(key, `[Scheduled Reminder] ${job.message}`);
-      console.log(
-        `[scheduler] Job "${job.name}" result: ${result.text.slice(0, 100)}`
-      );
+      const reminderText = job.message || "Reminder";
+
+      if (job.channel === "terminal") {
+        const delivered = sendToTerminalSession(job.sender, reminderText);
+        if (!delivered) {
+          console.warn(
+            `[scheduler] Job "${job.name}" not delivered: terminal session ${job.sender} is offline`
+          );
+        }
+        return;
+      }
+
+      const sender = getChannelSender(job.channel);
+      if (!sender?.sendText) {
+        console.warn(
+          `[scheduler] Job "${job.name}" not delivered: channel "${job.channel}" has no text sender`
+        );
+        return;
+      }
+
+      await sender.sendText({ recipient: job.sender, text: reminderText });
+      console.log(`[scheduler] Delivered job "${job.name}" to ${job.channel}:${job.sender}`);
     } catch (err) {
       console.error(`[scheduler] Job error: ${err}`);
     }

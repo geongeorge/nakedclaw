@@ -178,7 +178,7 @@ ${BOLD}${CYAN}NakedClaw Commands${RESET}
     ${GREEN}/status${RESET}             System status
     ${GREEN}/memory${RESET}             Show memory index
     ${GREEN}/search <query>${RESET}     Search chat history
-    ${GREEN}/schedule <t> <msg>${RESET} Schedule a reminder
+    ${GREEN}/schedule <time> <msg>${RESET} Schedule a reminder (time first or last)
     ${GREEN}/jobs${RESET}               List scheduled jobs
     ${GREEN}/cancel <id>${RESET}        Cancel a job
     ${GREEN}/heartbeat${RESET}          Heartbeat status

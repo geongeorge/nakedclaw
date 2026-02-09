@@ -93,7 +93,13 @@ export async function handleMessage(
 
   // Run agent
   try {
-    const result = await runAgent(key, agentText, msg.attachments, reply);
+    const result = await runAgent(
+      key,
+      agentText,
+      msg.attachments,
+      reply,
+      { channel: msg.channel, sender: msg.sender }
+    );
 
     // Log tool calls to chat history
     if (result.toolCalls && result.toolCalls.length > 0) {
@@ -187,7 +193,7 @@ async function handleCommand(
     case "/schedule": {
       if (!arg) {
         await reply(
-          "Usage: /schedule <time> <message>\nExamples:\n  /schedule at 10 Check email\n  /schedule in 30 minutes Call mom\n  /schedule every day at 9am Morning review"
+          "Usage: /schedule <time> <message> (or <message> <time>)\nExamples:\n  /schedule at 10 Check email\n  /schedule in 30 minutes Call mom\n  /schedule Call mom in 30 minutes\n  /schedule every day at 9am Morning review"
         );
         return true;
       }
@@ -196,7 +202,7 @@ async function handleCommand(
       const parsed = tryParseSchedule(arg, msg.channel, msg.sender);
       if (!parsed) {
         await reply(
-          "Couldn't parse time. Try:\n  at 10, at 3pm, in 30 minutes, every day at 9am"
+          "Couldn't parse time. Try:\n  at 10, at 3pm, in 30 minutes, every day at 9am\nYou can put time first or last."
         );
         return true;
       }
@@ -312,6 +318,20 @@ function tryParseSchedule(
   for (let i = Math.min(words.length, 6); i >= 1; i--) {
     const timePart = words.slice(0, i).join(" ");
     const messagePart = words.slice(i).join(" ") || "Reminder";
+
+    const parsed = parseTimeToJob(timePart, channel, sender);
+    if (parsed) {
+      parsed.message = messagePart;
+      parsed.name = messagePart.slice(0, 50);
+      return { job: parsed, reminderText: messagePart };
+    }
+  }
+
+  // Also support time phrases at the end:
+  // "happy birthday in 1 minute" or "check email at 3pm"
+  for (let i = 1; i <= Math.min(words.length, 6); i++) {
+    const timePart = words.slice(words.length - i).join(" ");
+    const messagePart = words.slice(0, words.length - i).join(" ") || "Reminder";
 
     const parsed = parseTimeToJob(timePart, channel, sender);
     if (parsed) {

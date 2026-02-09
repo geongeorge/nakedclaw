@@ -159,6 +159,10 @@ export function createWhatsAppAdapter(
           // Register file sender so agent can send images/files back
           const currentSock = sock!;
           registerChannelSender("whatsapp", {
+            async sendText({ recipient, text }) {
+              await currentSock.sendMessage(recipient, { text });
+            },
+
             async sendFile({ recipient, filePath, caption }) {
               const mediaType = detectMediaType(filePath);
               const buffer = readFileSync(filePath);

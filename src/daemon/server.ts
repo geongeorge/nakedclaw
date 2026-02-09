@@ -24,6 +24,23 @@ export function setActiveChannels(names: string[]): void {
   activeChannelNames = names;
 }
 
+export function sendToTerminalSession(sessionId: string, text: string): boolean {
+  let sent = false;
+  for (const [socket, sid] of clients.entries()) {
+    if (sid !== sessionId) continue;
+    socket.write(
+      encode({
+        type: "chat_response",
+        sessionId,
+        text,
+        done: true,
+      })
+    );
+    sent = true;
+  }
+  return sent;
+}
+
 export function startDaemonServer(): { stop: () => void } {
   const socketPath = join(getStateDir(), SOCKET_FILENAME);
   startTime = Date.now();

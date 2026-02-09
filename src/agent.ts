@@ -18,7 +18,8 @@ export async function runAgent(
   sessionKey: string,
   userMessage: string,
   attachments?: Attachment[],
-  reply?: (text: string) => Promise<void>
+  reply?: (text: string) => Promise<void>,
+  toolContextOverride?: { channel: string; sender: string }
 ): Promise<AgentResponse> {
   const config = loadConfig();
   const provider = config.model.provider || "anthropic";
@@ -53,9 +54,11 @@ export async function runAgent(
 
   // Extract channel + sender from session key for tool context (e.g. send_file)
   const colonIdx = sessionKey.indexOf(":");
-  const toolContext: ToolContext | undefined = colonIdx > 0
-    ? { channel: sessionKey.slice(0, colonIdx), sender: sessionKey.slice(colonIdx + 1), reply }
-    : undefined;
+  const toolContext: ToolContext | undefined = toolContextOverride
+    ? { channel: toolContextOverride.channel, sender: toolContextOverride.sender, reply }
+    : colonIdx > 0
+      ? { channel: sessionKey.slice(0, colonIdx), sender: sessionKey.slice(colonIdx + 1), reply }
+      : undefined;
 
   const MAX_TOOL_ITERATIONS = 10;
   const toolCallLog: AgentResponse["toolCalls"] = [];

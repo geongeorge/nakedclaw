@@ -6,6 +6,7 @@ import { searchMemory, getChatHistory, listSessions } from "./memory/store.ts";
 import { resolve, dirname } from "path";
 import { readFileSync, existsSync, appendFileSync, mkdirSync, writeFileSync } from "fs";
 import { getChannelSender, detectMediaType, getRegisteredChannels } from "./channels/registry.ts";
+import { addJob, parseTimeToJob } from "./scheduler/scheduler.ts";
 
 export type ToolContext = {
   channel: string;
@@ -117,6 +118,26 @@ export const sendMessageTool: Tool<typeof SendMessageParams> = {
   parameters: SendMessageParams,
 };
 
+const ScheduleReminderParams = Type.Object({
+  when: Type.String({
+    description:
+      "When to remind. Examples: 'in 1 minute', 'at 10', 'at 3pm', 'every day at 9am', 'every 2 hours'"
+  }),
+  message: Type.String({
+    description:
+      "Reminder message text to send when it fires"
+  }),
+});
+
+export const scheduleReminderTool: Tool<typeof ScheduleReminderParams> = {
+  name: "schedule_reminder",
+  description:
+    "Create a reminder job for the current user/channel. " +
+    "Use for requests like 'remind me in 1 minute' or 'message me at 3pm'. " +
+    "Returns the job id and next run time if scheduled successfully.",
+  parameters: ScheduleReminderParams,
+};
+
 export const sendFileTool: Tool<typeof SendFileParams> = {
   name: "send_file",
   description:
@@ -133,6 +154,7 @@ export const allTools: Tool[] = [
   saveCredentialTool,
   searchMemoryTool,
   rememberTool,
+  scheduleReminderTool,
   sendMessageTool,
   sendFileTool,
 ];
@@ -321,6 +343,45 @@ async function executeSendMessage(args: Static<typeof SendMessageParams>, contex
   }
 }
 
+function executeScheduleReminder(args: Static<typeof ScheduleReminderParams>, context?: ToolContext): ToolResult {
+  if (!context) {
+    return {
+      content: text("schedule_reminder requires a session context (channel + sender)."),
+      isError: true,
+    };
+  }
+
+  const when = args.when.trim();
+  const message = args.message.trim();
+
+  if (!when) {
+    return { content: text("Missing reminder time phrase in `when`."), isError: true };
+  }
+  if (!message) {
+    return { content: text("Missing reminder message text in `message`."), isError: true };
+  }
+
+  const parsed = parseTimeToJob(when, context.channel, context.sender);
+  if (!parsed) {
+    return {
+      content: text(
+        `Couldn't parse schedule time "${when}". Try: in 1 minute, at 3pm, every day at 9am.`
+      ),
+      isError: true,
+    };
+  }
+
+  parsed.message = message;
+  parsed.name = message.slice(0, 50);
+
+  const job = addJob(parsed);
+  const next = job.nextRunAt ? new Date(job.nextRunAt).toISOString() : "soon";
+  return {
+    content: text(`Scheduled reminder "${message}" (id: ${job.id}) next: ${next}`),
+    isError: false,
+  };
+}
+
 async function executeSendFile(args: Static<typeof SendFileParams>, context?: ToolContext): Promise<ToolResult> {
   if (!context) {
     return { content: text("send_file requires a session context (channel + sender). Cannot send files from headless sessions."), isError: true };
@@ -376,6 +437,8 @@ export async function executeTool(
       return executeSearchMemory(args as Static<typeof SearchMemoryParams>);
     case "remember":
       return executeRemember(args as Static<typeof RememberParams>);
+    case "schedule_reminder":
+      return executeScheduleReminder(args as Static<typeof ScheduleReminderParams>, context);
     case "send_message":
       return executeSendMessage(args as Static<typeof SendMessageParams>, context);
     case "send_file":
