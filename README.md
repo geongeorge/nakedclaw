@@ -40,7 +40,7 @@ All the good functionality. None of the clothes. Truly naked.
 - **Skills** — NakedClaw reaches its long, naked claw into the [openclaw](https://github.com/openclaw/openclaw) skill catalog and shamelessly steals every single skill. 100% compatible with all openclaw skills — turns out you don't need clothes to be talented
 
 <p align="center">
-  <img src="public/nakedclaw-in-terminal.png" width="700" alt="NakedClaw terminal chat" /><br/>
+  <img src="public/nkc-Terminal.gif" width="700" alt="NakedClaw terminal chat" /><br/>
   Access it via the terminal
 </p>
 
