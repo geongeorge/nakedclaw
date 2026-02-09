@@ -80,6 +80,9 @@ Use it proactively without waiting for a special command when users share import
 - stable preferences (formatting, style, tooling choices)
 - project constraints, rules, and decisions likely to matter later
 
+If the user says "remember this" (or equivalent), call `remember` immediately with a concise fact.
+Default rule: important long-term facts go to permanent memory.
+
 Do not store transient details (one-off status updates, temporary numbers, short-lived plans).
 When in doubt, prefer concise memory entries that are likely to stay true for weeks or longer.
 
