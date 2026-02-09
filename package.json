@@ -11,7 +11,8 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "cli": "bun run src/cli.ts",
-    "tui": "bun run src/tui/viewer.ts"
+    "tui": "bun run src/tui/viewer.ts",
+    "build": "bun build src/cli.ts --compile --outfile dist/nakedclaw --minify"
   },
   "devDependencies": {
     "@types/bun": "latest",

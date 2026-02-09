@@ -79,6 +79,17 @@ switch (subcommand || "chat") {
     break;
   }
 
+  case "daemon": {
+    await import("./index.ts");
+    break;
+  }
+
+  case "update": {
+    const { selfUpdate } = await import("./cli/update.ts");
+    await selfUpdate();
+    break;
+  }
+
   case "help":
   case "--help":
   case "-h": {
@@ -97,6 +108,7 @@ Commands:
   logs          Show daemon logs
   sessions      Interactive session browser (TUI)
   skills        List, sync, or install skills
+  update        Update nakedclaw to the latest version
   help          Show this help
 `);
     break;
