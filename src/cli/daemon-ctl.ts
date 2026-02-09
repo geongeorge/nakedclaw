@@ -57,16 +57,21 @@ export async function startDaemon(): Promise<void> {
 
   mkdirSync(paths.logsDir, { recursive: true });
 
-  // Resolve the daemon entry point relative to this file
-  const daemonEntry = resolve(import.meta.dir, "../index.ts");
   const projectRoot = resolve(import.meta.dir, "../..");
+
+  // Detect if running as compiled binary or via bun
+  const isBunDev =
+    process.argv[0]?.endsWith("/bun") || process.argv[0]?.endsWith("/bunx");
+  const cmd = isBunDev
+    ? `nohup bun run "${resolve(import.meta.dir, "../index.ts")}" >> "${paths.logFile}" 2>&1 &`
+    : `nohup "${process.execPath}" daemon >> "${paths.logFile}" 2>&1 &`;
 
   // Spawn detached daemon via nohup so it survives parent exit
   // CWD must be project root so Bun loads .env and relative paths resolve
-  const proc = Bun.spawn(
-    ["sh", "-c", `nohup bun run "${daemonEntry}" >> "${paths.logFile}" 2>&1 &`],
-    { cwd: projectRoot, stdio: ["ignore", "ignore", "ignore"] }
-  );
+  const proc = Bun.spawn(["sh", "-c", cmd], {
+    cwd: projectRoot,
+    stdio: ["ignore", "ignore", "ignore"],
+  });
 
   // Wait for the daemon to write its PID file
   await proc.exited;
