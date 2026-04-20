@@ -1,5 +1,5 @@
 import type { IncomingMessage, ReplyFn } from "./channels/types.ts";
-import { runAgent } from "./agent.ts";
+import { runAgent, getWorkingModelConfig } from "./agent.ts";
 import { appendMessage, sessionKeyFromMessage } from "./session.ts";
 import {
   appendChat,
@@ -19,6 +19,8 @@ import { getHeartbeatStatus } from "./scheduler/heartbeat.ts";
 import { syncCatalog } from "./skills/catalog.ts";
 import { installSkillByName } from "./skills/installer.ts";
 import { getAllSkillStatuses } from "./skills/loader.ts";
+import { sendModelInfo } from "./daemon/server.ts";
+import { loadConfig } from "./config.ts";
 
 /**
  * Message router: incoming message → command check → agent → reply.
@@ -31,6 +33,12 @@ export async function handleMessage(
 ): Promise<void> {
   const key = sessionKeyFromMessage(msg.channel, msg.sender);
   const text = msg.text.trim();
+
+  // Send model info to terminal clients
+  const config = loadConfig();
+  getWorkingModelConfig(config.model?.name, config.ollama?.host)
+    .then(info => sendModelInfo(info.provider, info.modelName))
+    .catch(() => {});
 
   console.log(`[router] ${msg.channel}:${msg.sender} → "${text.slice(0, 80)}"`);
 

@@ -1,18 +1,57 @@
-import { completeSimple, getModel, type Message, type ToolResultMessage } from "@mariozechner/pi-ai";
 import { getApiKeyForProvider } from "./auth/credentials.ts";
 import { loadChannels, loadPersistentMemory, loadSystemPrompt } from "./brain/loader.ts";
 import { loadSkillsPrompt } from "./skills/loader.ts";
 import { loadConfig } from "./config.ts";
 import { rebuildMemoryIndex } from "./memory/store.ts";
-import { getMessages, type SessionMessage } from "./session.ts";
+import { getMessages } from "./session.ts";
 import type { Attachment } from "./channels/types.ts";
-import { readImageAsBase64 } from "./media.ts";
-import { allTools, executeTool, type ToolContext } from "./tools.ts";
+
+import { chatCompletion as openrouterChat, fetchFreeModels, selectBestModel } from "./providers/openrouter.ts";
+import { chatCompletion as ollamaChat, isRunning as ollamaRunning, listModels as ollamaList, selectBest as ollamaSelectBest } from "./providers/ollama.ts";
 
 export type AgentResponse = {
   text: string;
   toolCalls?: Array<{ name: string; input: unknown; output: string }>;
 };
+
+// ============================================================================
+// MODEL CONFIGURATION & FALLBACK
+// ============================================================================
+
+export async function getWorkingModelConfig(
+  configModelName?: string,
+  ollamaHost: string = "http://localhost:11434"
+): Promise<{
+  provider: "openrouter" | "ollama";
+  modelName: string;
+}> {
+  const openrouterApiKey = (await getApiKeyForProvider("openrouter")) || process.env.OPENROUTER_API_KEY || "";
+
+  if (openrouterApiKey) {
+    const freeModels = await fetchFreeModels(openrouterApiKey);
+    const selected = selectBestModel(freeModels, configModelName);
+    if (selected) {
+      return { provider: "openrouter", modelName: selected.id };
+    }
+  }
+
+  if (!(await ollamaRunning(ollamaHost))) {
+    throw new Error("No working models: OpenRouter unavailable AND Ollama not running");
+  }
+
+  const available = await ollamaList(ollamaHost);
+  const selected = ollamaSelectBest(available, configModelName);
+
+  if (!selected) {
+    throw new Error("Ollama running but no models found.");
+  }
+
+  return { provider: "ollama", modelName: selected };
+}
+
+// ============================================================================
+// MAIN AGENT EXECUTION
+// ============================================================================
 
 export async function runAgent(
   sessionKey: string,
@@ -21,200 +60,84 @@ export async function runAgent(
   reply?: (text: string) => Promise<void>,
   toolContextOverride?: { channel: string; sender: string }
 ): Promise<AgentResponse> {
+  
   const config = loadConfig();
-  const provider = config.model.provider || "anthropic";
-  const apiKey = await getApiKeyForProvider(provider);
+  const ollamaHost = config.ollama?.host || process.env.OLLAMA_HOST || "http://localhost:11434";
+  const preferredModel = config.model?.name;
 
-  // Rebuild memory index so agent has fresh context
-  const memoryContext = rebuildMemoryIndex();
-
-  // Get conversation history
-  const history = getMessages(sessionKey);
-
-  // Resolve the model through pi-ai (needed before building messages for the API string)
-  const modelRef = config.model.name as any;
-  const model = getModel(provider as any, modelRef);
-  if (!model) {
-    throw new Error(`Model not found: ${provider}/${modelRef}`);
-  }
-
-  // Build messages for the API
-  const systemPrompt = await buildSystemPrompt(config.workspace, memoryContext);
-  const supportsVision = model.input.includes("image");
-  const messages = historyToApiMessages(history, userMessage, model.api, provider, supportsVision, attachments);
-
-  // Only pass temperature for non-reasoning models (OpenAI reasoning models reject it)
-  const options: Record<string, any> = {
-    apiKey,
-    maxTokens: 4096,
-  };
-  if (!model.reasoning) {
-    options.temperature = 0.7;
-  }
-
-  // Extract channel + sender from session key for tool context (e.g. send_file)
-  const colonIdx = sessionKey.indexOf(":");
-  const toolContext: ToolContext | undefined = toolContextOverride
-    ? { channel: toolContextOverride.channel, sender: toolContextOverride.sender, reply }
-    : colonIdx > 0
-      ? { channel: sessionKey.slice(0, colonIdx), sender: sessionKey.slice(colonIdx + 1), reply }
-      : undefined;
-
-  const MAX_TOOL_ITERATIONS = config.sessions.maxToolIterations ?? 25;
-  const toolCallLog: AgentResponse["toolCalls"] = [];
-
-  for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const res = await completeSimple(
-      model,
-      { systemPrompt, messages, tools: allTools },
-      options
-    );
-
-    if (res.errorMessage) {
-      if (res.errorMessage.includes("only authorized for use with Claude Code")) {
-        throw new Error(
-          "Your OAuth token is restricted to Claude Code and can't be used for external API calls.\n" +
-          "Fix: set ANTHROPIC_API_KEY or run `nakedclaw setup` and choose API key auth.\n" +
-          "Get a key at https://console.anthropic.com/settings/keys"
-        );
+  // === STRATEGY 1: Try OpenRouter Free Models ===
+  const openrouterKey = (await getApiKeyForProvider("openrouter")) || process.env.OPENROUTER_API_KEY || "";
+  
+  if (openrouterKey) {
+    console.debug("[agent] Trying OpenRouter free models...");
+    const freeModels = await fetchFreeModels(openrouterKey);
+    const selected = selectBestModel(freeModels, preferredModel);
+    
+    if (selected) {
+      console.debug(`[agent] ✅ OpenRouter: ${selected.id}`);
+      // Convert history to simple {role, content} format
+      const history = getMessages(sessionKey);
+      const messages = [
+        { role: "system", content: await buildSystemPrompt(config.workspace) },
+        ...history.map(h => ({ role: h.role, content: h.content })),
+        { role: "user", content: userMessage }
+      ];
+      
+      const result = await openrouterChat(openrouterKey, selected.id, messages, { maxTokens: 4096 });
+      if (result.error) {
+        console.warn(`[agent] OpenRouter failed: ${result.error}, falling back to Ollama`);
+      } else {
+        return { text: result.content };
       }
-      throw new Error(res.errorMessage);
-    }
-
-    // Push assistant message into conversation for multi-turn tool use
-    messages.push(res);
-
-    if (res.stopReason !== "toolUse") {
-      // Final text response — extract and return
-      const text =
-        res.content
-          .filter((block) => block.type === "text")
-          .map((block) => ("text" in block ? block.text : ""))
-          .join("\n") || "(no response)";
-
-      return { text, toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined };
-    }
-
-    // Execute each tool call and push results
-    const toolCalls = res.content.filter((block) => block.type === "toolCall");
-
-    for (const call of toolCalls) {
-      if (call.type !== "toolCall") continue;
-      const result = await executeTool(call.name, call.arguments, toolContext);
-
-      toolCallLog.push({
-        name: call.name,
-        input: call.arguments,
-        output: result.content.map((c) => c.text).join("\n"),
-      });
-
-      const toolResult: ToolResultMessage = {
-        role: "toolResult",
-        toolCallId: call.id,
-        toolName: call.name,
-        content: result.content,
-        isError: result.isError,
-        timestamp: Date.now(),
-      };
-      messages.push(toolResult);
     }
   }
 
-  // If we exhaust iterations, return whatever text we have
-  console.log("[agent] Tool loop hit max iterations");
-  return { text: "(max tool iterations reached)", toolCalls: toolCallLog.length > 0 ? toolCallLog : undefined };
+  // === STRATEGY 2: Fallback to Ollama (NO API KEY NEEDED) ===
+  console.debug("[agent] 🦙 Falling back to Ollama...");
+  
+  if (!(await ollamaRunning(ollamaHost))) {
+    throw new Error("No working models: OpenRouter unavailable AND Ollama not running");
+  }
+  
+  const available = await ollamaList(ollamaHost);
+  const selected = ollamaSelectBest(available, preferredModel);
+  
+  if (!selected) {
+    throw new Error("Ollama running but no models found. Run: ollama pull gemma2:2b");
+  }
+  
+  console.debug(`[agent] ✅ Ollama: ${selected}`);
+  
+  const history = getMessages(sessionKey);
+  const messages = [
+    { role: "system", content: await buildSystemPrompt(config.workspace) },
+    ...history.map(h => ({ role: h.role, content: h.content })),
+    { role: "user", content: userMessage }
+  ];
+  
+  const result = await ollamaChat(selected, messages, ollamaHost, { maxTokens: 4096 });
+  if (result.error) {
+    throw new Error(`Ollama failed: ${result.error}`);
+  }
+  
+  return { text: result.content };
 }
 
-async function buildSystemPrompt(workspace: string, memoryContext: string): Promise<string> {
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+async function buildSystemPrompt(workspace: string): Promise<string> {
   const [system, channels, memory, skills] = await Promise.all([
     loadSystemPrompt(workspace),
     loadChannels(),
     loadPersistentMemory(),
     loadSkillsPrompt(),
   ]);
-
   const parts = [system];
-
-  if (channels) {
-    parts.push(channels);
-  }
-
-  if (skills) {
-    parts.push(skills);
-  }
-
-  if (memory) {
-    parts.push(`## Permanent Memory\n\n${memory}`);
-  }
-
-  parts.push(`## Temporary Memory Index\n\nRecent conversation summaries:\n\n${memoryContext}`);
-
+  if (channels) parts.push(channels);
+  if (skills) parts.push(skills);
+  if (memory) parts.push(`## Permanent Memory\n\n${memory}`);
+  parts.push(`## Temporary Memory Index\n\nRecent conversation summaries:\n\n${rebuildMemoryIndex()}`);
   return parts.join("\n\n");
-}
-
-function buildUserContent(
-  text: string,
-  sessionAttachments: SessionMessage["attachments"] | undefined,
-  supportsVision: boolean
-): string | Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> {
-  if (!supportsVision || !sessionAttachments || sessionAttachments.length === 0) {
-    return text;
-  }
-
-  const imageAttachments = sessionAttachments.filter((a) => a.type === "image");
-  if (imageAttachments.length === 0) return text;
-
-  const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [];
-  if (text) {
-    content.push({ type: "text", text });
-  }
-
-  for (const att of imageAttachments) {
-    const img = readImageAsBase64(att.filePath);
-    if (img) {
-      content.push({ type: "image", data: img.data, mimeType: img.mimeType });
-    }
-  }
-
-  return content.length === 1 && content[0]!.type === "text" ? text : content;
-}
-
-function historyToApiMessages(
-  history: SessionMessage[],
-  currentMessage: string,
-  api: string,
-  provider: string,
-  supportsVision: boolean,
-  currentAttachments?: Attachment[]
-): Message[] {
-  const msgs: Message[] = [];
-  const now = Date.now();
-
-  for (const h of history) {
-    if (h.role === "user") {
-      const content = buildUserContent(h.content, h.attachments, supportsVision);
-      msgs.push({ role: "user", content, timestamp: now });
-    } else if (h.role === "assistant") {
-      msgs.push({
-        role: "assistant",
-        content: [{ type: "text", text: h.content }],
-        api,
-        provider,
-        model: "",
-        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-        stopReason: "stop",
-        timestamp: now,
-      });
-    }
-  }
-
-  // Current message — convert channel attachments to session format for buildUserContent
-  const sessionAtts = currentAttachments?.map((a) => ({
-    type: a.type,
-    filePath: a.filePath,
-    mimeType: a.mimeType,
-  }));
-  const content = buildUserContent(currentMessage, sessionAtts, supportsVision);
-  msgs.push({ role: "user", content, timestamp: now });
-  return msgs;
 }

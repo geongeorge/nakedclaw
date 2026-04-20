@@ -8,6 +8,13 @@ export type OAuthConfig = {
   scopes: string[];
 };
 
+// --- ADDED: OpenRouter Configuration ---
+export const OPENROUTER_CONFIG = {
+  baseUrl: "https://openrouter.ai/api/v1",
+  siteUrl: "http://localhost:3000", // Required by OpenRouter for rankings
+  siteName: "NakedClaw",
+};
+
 export const ANTHROPIC_OAUTH: OAuthConfig = {
   clientId: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
   authUrl: "https://claude.ai/oauth/authorize",
@@ -21,6 +28,21 @@ export type OAuthTokens = {
   refreshToken: string;
   expiresIn: number;
 };
+
+// --- ADDED: Ollama Detection Utility ---
+/**
+ * Detects local Ollama instance and returns available models.
+ */
+export async function detectLocalOllama(): Promise<string[]> {
+  try {
+    const response = await fetch("http://127.0.0.1:11434/api/tags");
+    if (!response.ok) return [];
+    const data = (await response.json()) as { models: { name: string }[] };
+    return data.models.map((m) => m.name);
+  } catch (e) {
+    return []; // Ollama not running
+  }
+}
 
 function base64url(buffer: Buffer): string {
   return buffer
@@ -39,9 +61,6 @@ function generateCodeChallenge(verifier: string): string {
   return base64url(hash);
 }
 
-/**
- * Build the authorization URL and PKCE values.
- */
 export function buildAuthorizationUrl(config: OAuthConfig = ANTHROPIC_OAUTH): {
   url: string;
   codeVerifier: string;
@@ -68,16 +87,9 @@ export function buildAuthorizationUrl(config: OAuthConfig = ANTHROPIC_OAUTH): {
   };
 }
 
-/**
- * Parse pasted input which can be:
- * - A raw authorization code
- * - A "code#state" token (OpenClaw-style callback page format)
- * - A full callback URL with ?code=...&state=... query params
- */
 export function parseAuthInput(input: string): { code: string; state?: string } {
   const trimmed = input.trim();
 
-  // Full callback URL: https://...?code=XXX&state=YYY
   if (trimmed.startsWith("http")) {
     try {
       const url = new URL(trimmed);
@@ -87,19 +99,14 @@ export function parseAuthInput(input: string): { code: string; state?: string } 
     } catch {}
   }
 
-  // code#state format
   if (trimmed.includes("#")) {
     const [code, state] = trimmed.split("#", 2);
     if (code && state) return { code, state };
   }
 
-  // Raw code
   return { code: trimmed };
 }
 
-/**
- * Exchange an authorization code for tokens.
- */
 export async function exchangeCodeForTokens(
   code: string,
   codeVerifier: string,
@@ -140,31 +147,46 @@ export async function exchangeCodeForTokens(
 }
 
 /**
- * Run the full OAuth flow:
- * 1. Build auth URL with PKCE
- * 2. Open browser
- * 3. Prompt user to paste the authorization code
- * 4. Exchange code for tokens
+ * Enhanced OAuth flow with OpenRouter support and Ollama fallback detection.
  */
 export async function startOAuthFlow(
   config: OAuthConfig = ANTHROPIC_OAUTH
-): Promise<OAuthTokens> {
+): Promise<OAuthTokens | { localModel: string } | { openRouterKey: string }> {
+  
+  // --- ADDED: Check for Local Fallbacks First ---
+  const localModels = await detectLocalOllama();
+  if (localModels.length > 0) {
+    console.log("\n[Detected Local Ollama Models]");
+    localModels.forEach((m, i) => console.log(`  [L${i}] ${m}`));
+    console.log("  [O] Use OpenRouter instead");
+    console.log("  [C] Continue with Anthropic OAuth");
+    
+    process.stdout.write("\nSelect a local model index, 'O' for OpenRouter, or 'C' for Anthropic: ");
+    for await (const line of console) {
+      const choice = line.trim().toUpperCase();
+      if (choice === 'C') break; 
+      if (choice === 'O') {
+        process.stdout.write("Enter your OpenRouter API Key: ");
+        for await (const key of console) return { openRouterKey: key.trim() };
+      }
+      const idx = parseInt(choice.replace('L', ''));
+      if (!isNaN(idx) && localModels[idx]) {
+        return { localModel: localModels[idx] };
+      }
+      break;
+    }
+  }
+
   const { url, codeVerifier } = buildAuthorizationUrl(config);
 
   console.log("\nOpening browser for Anthropic authorization...\n");
   console.log(`If the browser doesn't open, visit:\n${url}\n`);
 
-  // Open browser (macOS)
   try {
     Bun.spawn(["open", url], { stdio: ["ignore", "ignore", "ignore"] });
-  } catch {
-    // Non-fatal — user can copy the URL
-  }
+  } catch {}
 
-  // Prompt user to paste the code#state token or authorization code
-  process.stdout.write(
-    "Paste the code (or code#state token) here: "
-  );
+  process.stdout.write("Paste the code (or code#state token) here: ");
   let raw = "";
   for await (const line of console) {
     raw = line.trim();

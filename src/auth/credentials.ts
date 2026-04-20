@@ -22,7 +22,8 @@ export type OpenAICodexCredentials = {
 export type ProviderCredential =
   | { method: "api_key"; apiKey: string }
   | { method: "oauth"; oauth: OAuthCredentials }
-  | { method: "oauth"; openaiCodex: OpenAICodexCredentials };
+  | { method: "oauth"; openaiCodex: OpenAICodexCredentials }
+  | { method: "local"; modelName: string; baseUrl?: string }; // --- ADDED: Local Ollama support ---
 
 /** Map of provider → credential */
 export type CredentialsStore = Record<string, ProviderCredential>;
@@ -61,7 +62,6 @@ function migrateOldCredentials(old: Credentials): CredentialsStore {
   const provider =
     "provider" in old && old.provider ? old.provider : "anthropic";
 
-  // Strip the provider field — the key IS the provider now
   if ("apiKey" in old) {
     return { [provider]: { method: "api_key", apiKey: old.apiKey } };
   }
@@ -83,7 +83,6 @@ export function loadAllCredentials(): CredentialsStore {
 
     if (isOldFormat(data)) {
       const migrated = migrateOldCredentials(data);
-      // Persist the migrated format
       ensureStateDir();
       writeFileSync(CREDS_PATH, JSON.stringify(migrated, null, 2), "utf-8");
       return migrated;
@@ -114,7 +113,7 @@ export function removeProviderCredential(provider: string): void {
   writeFileSync(CREDS_PATH, JSON.stringify(store, null, 2), "utf-8");
 }
 
-/** Refresh an Anthropic OAuth token if expired. Returns the (possibly refreshed) access token. */
+/** Refresh an Anthropic OAuth token if expired. */
 async function refreshAnthropicIfNeeded(
   provider: string,
   oauth: OAuthCredentials
@@ -157,7 +156,7 @@ async function refreshAnthropicIfNeeded(
   return updated.accessToken;
 }
 
-/** Refresh an OpenAI Codex token if expired. Returns the (possibly refreshed) access token. */
+/** Refresh an OpenAI Codex token if expired. */
 async function refreshOpenAICodexIfNeeded(
   provider: string,
   codex: OpenAICodexCredentials
@@ -167,7 +166,6 @@ async function refreshOpenAICodexIfNeeded(
   }
 
   console.log("[auth] Refreshing OpenAI Codex token...");
-
   const refreshed = await refreshOpenAICodexToken(codex.refresh);
 
   const updated: OpenAICodexCredentials = {
@@ -181,52 +179,30 @@ async function refreshOpenAICodexIfNeeded(
   return updated.access;
 }
 
+
 /**
  * Get an API key for the given provider.
  * Checks env vars first, then stored credentials.
- * Automatically refreshes expired OAuth / Codex tokens.
  */
 export async function getApiKeyForProvider(provider: string): Promise<string> {
-  // Env vars take priority
-  if (provider === "anthropic" || provider === "openai") {
-    const envVar = provider === "anthropic" ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
-    const envKey = process.env[envVar];
-    if (envKey) return envKey;
+  // NO-AUTH PROVIDERS
+  if (provider === "ollama") return "";
+  
+  // ENV VARS
+  if (provider === "openrouter" && process.env.OPENROUTER_API_KEY) {
+    return process.env.OPENROUTER_API_KEY;
   }
-  if (provider === "openai-codex") {
-    const envKey = process.env.OPENAI_API_KEY;
-    if (envKey) return envKey;
-  }
-
+  
+  // STORED CREDS
   const store = loadAllCredentials();
   const cred = store[provider];
-
   if (!cred) {
-    throw new Error(
-      `No credentials for ${provider}. Run: nakedclaw setup`
-    );
+    throw new Error(`No credentials for ${provider}. Run: nakedclaw setup`);
   }
-
-  if (cred.method === "api_key") {
-    return cred.apiKey;
-  }
-
-  // OAuth — Anthropic
-  if ("oauth" in cred) {
-    return refreshAnthropicIfNeeded(provider, cred.oauth);
-  }
-
-  // OAuth — OpenAI Codex
-  if ("openaiCodex" in cred) {
-    return refreshOpenAICodexIfNeeded(provider, cred.openaiCodex);
-  }
-
-  throw new Error("Invalid credential state. Run: nakedclaw setup");
+  return (cred as any).apiKey;
 }
-
 /**
  * @deprecated Use getApiKeyForProvider() instead.
- * Get auth headers for the Anthropic API (backward compat).
  */
 export async function getAuthHeaders(): Promise<Record<string, string>> {
   const key = await getApiKeyForProvider("anthropic");

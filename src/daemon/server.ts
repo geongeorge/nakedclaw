@@ -13,6 +13,8 @@ import { handleMessage } from "../router.ts";
 import { listSessions } from "../memory/store.ts";
 import { listJobs } from "../scheduler/scheduler.ts";
 import type { IncomingMessage, ReplyFn } from "../channels/types.ts";
+import { getWorkingModelConfig } from "../agent.ts";
+import { loadConfig } from "../config.ts";
 
 type ClientSocket = Socket<{ buffer: string }>;
 
@@ -39,6 +41,18 @@ export function sendToTerminalSession(sessionId: string, text: string): boolean 
     sent = true;
   }
   return sent;
+}
+
+export function sendModelInfo(provider: "openrouter" | "ollama", modelName: string): void {
+  for (const socket of clients.keys()) {
+    socket.write(
+      encode({
+        type: "model_info",
+        provider,
+        modelName,
+      })
+    );
+  }
 }
 
 export function startDaemonServer(): { stop: () => void } {
@@ -124,6 +138,18 @@ async function handleClientMessage(
         jobs: jobs.length,
       };
       socket.write(encode(response));
+
+      // Also send model info
+      const config = loadConfig();
+      getWorkingModelConfig(config.model?.name, config.ollama?.host)
+        .then(info => {
+          socket.write(encode({
+            type: "model_info",
+            provider: info.provider,
+            modelName: info.modelName
+          }));
+        })
+        .catch(() => {});
       break;
     }
 

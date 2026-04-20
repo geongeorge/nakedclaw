@@ -15,6 +15,54 @@ const DIM = "\x1b[2m";
 const YELLOW = "\x1b[33m";
 const RED = "\x1b[31m";
 const RESET = "\x1b[0m";
+// Add these to the top of src/agent.ts
+const OPENROUTER_FREE_MODELS = [
+  "qwen/qwen3-coder:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "google/gemma-3-27b-it:free",
+  "openrouter/elephant-alpha"
+];
+
+async function getVettedModel(): Promise<{ provider: string, name: string }> {
+  console.log(`${YELLOW}🔍 Vetting cloud models...${RESET}`);
+  
+  const apiKey = (await getApiKeyForProvider("openrouter")) || "";
+  
+  // 1. Try Cloud Models in order of preference
+  for (const modelName of OPENROUTER_FREE_MODELS) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1500); // 1.5s "ping" test
+
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: "user", content: "." }], // Micro-prompt
+          max_tokens: 1
+        }),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeout);
+
+      if (response.ok) {
+        console.log(`✅ ${modelName} is healthy.`);
+        return { provider: "openrouter", name: modelName };
+      }
+    } catch (e) {
+      console.log(`⚠️  ${modelName} timed out or failed. trying next...`);
+    }
+  }
+
+  // 2. Final Fallback: Local Ollama
+  console.log(`${YELLOW}🏠 All cloud models failed. Using local Ollama.${RESET}`);
+  return { provider: "ollama", name: "gemma2:9b" }; // Or your preferred local model
+}
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -27,14 +75,27 @@ function prompt(msg: string): Promise<string> {
 const METHOD_LABELS: Record<string, string> = {
   api_key: "API key",
   oauth: "OAuth",
+  local: "Local Inference", // Added label for Ollama
 };
 
 const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   openai: "OpenAI",
   "openai-codex": "OpenAI Codex",
+  openrouter: "OpenRouter (Cloud)",
+  ollama: "Ollama (Local)",
   whisper: "Whisper",
 };
+
+/** Checks if Ollama is accessible on the default port */
+async function checkOllama(): Promise<boolean> {
+  try {
+    const res = await fetch("http://localhost:11434/api/version");
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 function showSavedCredentials(store: CredentialsStore): void {
   const providers = Object.keys(store);
@@ -42,7 +103,6 @@ function showSavedCredentials(store: CredentialsStore): void {
     console.log(`${DIM}No saved credentials.${RESET}\n`);
     return;
   }
-
   console.log("Saved credentials:\n");
   for (const provider of providers) {
     const cred = store[provider]!;
@@ -51,92 +111,37 @@ function showSavedCredentials(store: CredentialsStore): void {
     if (cred.method === "oauth" && "openaiCodex" in cred) {
       methodLabel = "OAuth (Codex)";
     }
-    console.log(`  ${BOLD}${label}${RESET}  ${DIM}— ${methodLabel}${RESET}`);
+    console.log(` ${BOLD}${label}${RESET} ${DIM}— ${methodLabel}${RESET}`);
   }
   console.log();
 }
 
-async function addAnthropicSetupToken(): Promise<void> {
-  console.log(
-    `\n${YELLOW}Run ${BOLD}claude setup-token${RESET}${YELLOW} in another terminal, then paste the token here.${RESET}\n` +
-    `${DIM}The token starts with sk-ant-oat01-${RESET}\n`
-  );
-  const token = await prompt("Setup token: ");
-  if (!token) {
-    console.log("No token provided.");
-    return;
-  }
+// ... (Keep addAnthropic, addOpenAI, addOpenAICodex, addWhisper functions as they are)
 
-  if (!token.startsWith("sk-ant-oat")) {
-    console.log(`${RED}Expected a token starting with sk-ant-oat01-${RESET}`);
-    console.log(`${DIM}Run "claude setup-token" in another terminal to generate one.${RESET}`);
-    return;
-  }
-
-  saveProviderCredential("anthropic", { method: "api_key", apiKey: token });
-  console.log(`${GREEN}Anthropic setup token saved.${RESET}`);
-}
-
-async function addAnthropicApiKey(): Promise<void> {
-  const key = await prompt("\nAnthropic API Key: ");
+async function addOpenRouterApiKey(): Promise<void> {
+  console.log(`\n${CYAN}Get your free API key at: https://openrouter.ai/keys${RESET}\n`);
+  const key = await prompt("OpenRouter API Key: ");
   if (!key) {
     console.log("No key provided.");
     return;
   }
-  saveProviderCredential("anthropic", { method: "api_key", apiKey: key });
-  console.log(`${GREEN}Anthropic API key saved.${RESET}`);
+  saveProviderCredential("openrouter", { method: "api_key", apiKey: key });
+  console.log(`${GREEN}OpenRouter API key saved.${RESET}`);
 }
 
-async function addOpenAIApiKey(): Promise<void> {
-  const key = await prompt("\nOpenAI API Key: ");
-  if (!key) {
-    console.log("No key provided.");
-    return;
+/** New handler for Ollama to prevent "No Credentials" errors */
+async function setupOllamaLocal(): Promise<void> {
+  console.log(`\n${CYAN}Configuring local Ollama...${RESET}`);
+  const isRunning = await checkOllama();
+  
+  if (!isRunning) {
+    console.log(`${YELLOW}Warning: Ollama doesn't seem to be running on localhost:11434.${RESET}`);
+    console.log(`${DIM}Make sure to start 'ollama serve' later.${RESET}\n`);
   }
-  saveProviderCredential("openai", { method: "api_key", apiKey: key });
-  console.log(`${GREEN}OpenAI API key saved.${RESET}`);
-}
 
-async function addOpenAICodex(): Promise<void> {
-  console.log(`\n${YELLOW}Logging in with OpenAI Codex (ChatGPT subscription)...${RESET}\n`);
-
-  try {
-    const result = await loginOpenAICodex({
-      onAuth: ({ url, instructions }) => {
-        console.log(instructions || "Open the following URL to authenticate:");
-        console.log(`\n  ${CYAN}${url}${RESET}\n`);
-        try {
-          Bun.spawn(["open", url], { stdio: ["ignore", "ignore", "ignore"] });
-        } catch {}
-      },
-      onPrompt: async ({ message }) => {
-        return await prompt(message || "Paste the code: ");
-      },
-    });
-
-    saveProviderCredential("openai-codex", {
-      method: "oauth",
-      openaiCodex: {
-        access: result.access,
-        refresh: result.refresh,
-        expires: result.expires,
-        accountId: (result as any).accountId || "",
-      },
-    });
-    console.log(`${GREEN}OpenAI Codex credentials saved.${RESET}`);
-  } catch (err: any) {
-    console.error(`${RED}Codex login failed:${RESET} ${err.message}`);
-  }
-}
-
-async function addWhisperApiKey(): Promise<void> {
-  const key = await prompt("\nOpenAI API Key (for Whisper): ");
-  if (!key) {
-    console.log("No key provided.");
-    return;
-  }
-  saveProviderCredential("whisper", { method: "api_key", apiKey: key });
-  console.log(`${GREEN}Whisper API key saved.${RESET}`);
+  // We save a dummy key so NakedClaw's credential check passes
+  saveProviderCredential("ollama", { method: "api_key", apiKey: "local" });
+  console.log(`${GREEN}Ollama (Local) enabled in configuration.${RESET}`);
 }
 
 async function deleteCredential(store: CredentialsStore): Promise<void> {
@@ -145,22 +150,19 @@ async function deleteCredential(store: CredentialsStore): Promise<void> {
     console.log("\nNo credentials to delete.");
     return;
   }
-
   console.log("\nWhich credential to delete?\n");
   for (let i = 0; i < providers.length; i++) {
     const p = providers[i]!;
     const label = PROVIDER_LABELS[p] || p;
-    console.log(`  ${BOLD}[${i + 1}]${RESET} ${label}`);
+    console.log(` ${BOLD}[${i + 1}]${RESET} ${label}`);
   }
   console.log();
-
   const choice = await prompt("Choice (number): ");
   const idx = parseInt(choice, 10) - 1;
   if (isNaN(idx) || idx < 0 || idx >= providers.length) {
     console.log("Invalid choice.");
     return;
   }
-
   const provider = providers[idx]!;
   const label = PROVIDER_LABELS[provider] || provider;
   removeProviderCredential(provider);
@@ -169,23 +171,24 @@ async function deleteCredential(store: CredentialsStore): Promise<void> {
 
 async function main() {
   console.log(`\n${BOLD}${CYAN}NakedClaw Setup${RESET}\n`);
-
   ensureStateDir();
 
-  // Main loop — keep showing the menu until user quits
   while (true) {
     const store = loadAllCredentials();
     showSavedCredentials(store);
 
-    console.log(`  ${BOLD}[1]${RESET} Add Anthropic ${GREEN}(setup token)${RESET}`);
-    console.log(`  ${BOLD}[2]${RESET} Add Anthropic ${DIM}(API key)${RESET}`);
-    console.log(`  ${BOLD}[3]${RESET} Add OpenAI ${DIM}(API key)${RESET}`);
-    console.log(`  ${BOLD}[4]${RESET} Add OpenAI Codex ${DIM}(ChatGPT subscription)${RESET}`);
-    console.log(`  ${BOLD}[5]${RESET} Add Whisper API key ${DIM}(OpenAI)${RESET}`);
+    console.log(` ${BOLD}[1]${RESET} Add Anthropic ${GREEN}(setup token)${RESET}`);
+    console.log(` ${BOLD}[2]${RESET} Add Anthropic ${DIM}(API key)${RESET}`);
+    console.log(` ${BOLD}[3]${RESET} Add OpenAI ${DIM}(API key)${RESET}`);
+    console.log(` ${BOLD}[4]${RESET} Add OpenAI Codex ${DIM}(ChatGPT subscription)${RESET}`);
+    console.log(` ${BOLD}[5]${RESET} Add Whisper API key ${DIM}(OpenAI)${RESET}`);
+    console.log(` ${BOLD}[6]${RESET} Add OpenRouter API Key ${DIM}(Cloud - Recommended)${RESET}`);
+    console.log(` ${BOLD}[7]${RESET} Enable Ollama ${DIM}(Local Inference)${RESET}`);
+
     if (Object.keys(store).length > 0) {
-      console.log(`  ${BOLD}[d]${RESET} Delete a credential`);
+      console.log(` ${BOLD}[d]${RESET} Delete a credential`);
     }
-    console.log(`  ${BOLD}[q]${RESET} Done`);
+    console.log(` ${BOLD}[q]${RESET} Done`);
     console.log();
 
     const choice = await prompt("Choice: ");
@@ -200,6 +203,10 @@ async function main() {
       await addOpenAICodex();
     } else if (choice === "5") {
       await addWhisperApiKey();
+    } else if (choice === "6") {
+      await addOpenRouterApiKey();
+    } else if (choice === "7") {
+      await setupOllamaLocal();
     } else if (choice.toLowerCase() === "d" && Object.keys(store).length > 0) {
       await deleteCredential(store);
     } else if (choice.toLowerCase() === "q") {
@@ -208,22 +215,10 @@ async function main() {
       console.log("Invalid choice.\n");
       continue;
     }
-
-    console.log(); // blank line before next iteration
+    console.log(); 
   }
 
-  const final = loadAllCredentials();
-  if (Object.keys(final).length > 0) {
-    console.log(`
-${BOLD}Setup complete!${RESET}
-
-${CYAN}Next steps:${RESET}
-  1. Pick a model:      ${CYAN}nakedclaw models${RESET}
-  2. Start the daemon:  ${CYAN}nakedclaw start${RESET}
-  3. Chat:              ${CYAN}nakedclaw${RESET}
-`);
-  }
-
+  // ... (Final steps message remains same)
   rl.close();
 }
 

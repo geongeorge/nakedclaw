@@ -14,6 +14,30 @@
  *   nakedclaw logs         — show daemon logs
  */
 
+
+
+
+/// src/cli.ts
+import { TerminalUI } from "./ui/terminal.ts";
+import { runAgent, getWorkingModelConfig } from "./agent.ts";
+
+async function main() {
+  const ui = new TerminalUI(async (input: string) => {
+    const { provider, modelName } = await getWorkingModelConfig();
+    
+    // Update both indicators
+    ui.setModelStatus("cloud", provider === "openrouter", modelName, provider);
+    ui.setModelStatus("local", provider === "ollama", modelName, provider);
+
+    const res = await runAgent("terminal", input);
+    ui.addMessage("agent", res.text, `${modelName} via ${provider}`, "now");
+  });
+
+  await ui.start();
+}
+
+main().catch(console.error);
+
 const [subcommand] = process.argv.slice(2);
 
 switch (subcommand || "chat") {
