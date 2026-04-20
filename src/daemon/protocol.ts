@@ -28,6 +28,11 @@ export type ServerMessage =
       sessions: number;
       jobs: number;
     }
+  | {
+      type: "model_info";
+      provider: "openrouter" | "ollama";
+      modelName: string;
+    }
   | { type: "command_response"; text: string }
   | { type: "error"; message: string }
   | { type: "pong" };

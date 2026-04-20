@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "skills": {
+    "agent-skills-audit": {
+      "version": "0.1.0",
+      "installedAt": 1776679399328
+    },
+    "arc-security-audit": {
+      "version": "1.1.0",
+      "installedAt": 1776679402075
+    },
+    "self-improving": {
+      "version": "1.2.16",
+      "installedAt": 1776679798554
+    },
+    "proactivity": {
+      "version": "1.0.1",
+      "installedAt": 1776679802994
+    },
+    "playwright-mcp": {
+      "version": "1.0.0",
+      "installedAt": 1776679808164
+    },
+    "mcp-skill": {
+      "version": "1.0.0",
+      "installedAt": 1776679825611
+    },
+    "filesystem-mcp": {
+      "version": "1.0.0",
+      "installedAt": 1776679842232
+    },
+    "skill-vetter": {
+      "version": "1.0.0",
+      "installedAt": 1776680283062
+    },
+    "self-improving-agent": {
+      "version": "3.0.16",
+      "installedAt": 1776680299383
+    },
+    "proactive-agent": {
+      "version": "3.1.0",
+      "installedAt": 1776680307761
+    },
+    "analytics-sdk-setup": {
+      "version": "1.0.0",
+      "installedAt": 1776680522196
+    }
+  }
+}

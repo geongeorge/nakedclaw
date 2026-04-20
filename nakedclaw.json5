@@ -1,16 +1,16 @@
 {
   model: {
-    provider: 'openai-codex',
-    name: 'gpt-5.3-codex',
+    provider: 'openrouter',
+    name: 'nvidia/nemotron-3-super-120b-a12b:free',
   },
-  workspace: '.',
+  workspace: '/home/mapple/nakedclaw',
   channels: {
     telegram: {
-      enabled: true,
+      enabled: false,
       allowFrom: [],
     },
     whatsapp: {
-      enabled: true,
+      enabled: false,
       allowFrom: [],
     },
     slack: {
